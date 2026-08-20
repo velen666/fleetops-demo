@@ -1,0 +1,99 @@
+# shadcn-vue Component Inventory (fleetops-demo)
+
+Source of truth for available shadcn-vue adapters in this project. All adapters live under `src/components/ui/<name>/`. Import via `@/components/ui/<name>`.
+
+- CLI: `shadcn-vue@latest` v2.7.4
+- Style: `new-york` / `neutral` base / lucide icons (see `components.json`)
+- Add new components: `npx shadcn-vue@latest add <name> --yes`
+- zod pinned to `^4.4.3` (do NOT let CLI downgrade it to v3 — схемы данных демо-валидатора зависят от v4).
+
+## Form controls
+
+| Component | Exports | Notes |
+|---|---|---|
+| `button` | `Button` | cva variants: default/destructive/outline/secondary/ghost/link; sizes: default/sm/lg/icon/icon-sm/icon-lg. |
+| `input` | `Input` | text/email/password/number/etc. forwards native input attrs. |
+| `textarea` | `Textarea` | auto-grow not built-in; size via class. |
+| `label` | `Label` | reka-ui Label under the hood. |
+| `checkbox` | `Checkbox` | v-model supported. |
+| `switch` | `Switch` | on/off toggle. |
+| `native-select` | `NativeSelect`, `NativeSelectOptGroup`, `NativeSelectOption` | wraps `<select>` for SSR-friendly cases. Prefer `select` for richer UX. |
+| `select` | `Select`, `SelectContent`, `SelectGroup`, `SelectItem`, `SelectItemText`, `SelectLabel`, `SelectScrollDownButton`, `SelectScrollUpButton`, `SelectSeparator`, `SelectTrigger`, `SelectValue` | reka-ui Select. |
+| `combobox` | `Combobox`, `ComboboxAnchor`, `ComboboxEmpty`, `ComboboxGroup`, `ComboboxInput`, `ComboboxItem`, `ComboboxItemIndicator`, `ComboboxList`, `ComboboxSeparator`, `ComboboxTrigger`, `ComboboxViewport` | filterable list. |
+| `tags-input` | `TagsInput`, `TagsInputInput`, `TagsInputItem`, `TagsInputItemDelete`, `TagsInputItemText` | multi-token input. |
+| `slider` | — | not installed; add if needed. |
+| `form` | `FormControl`, `FormDescription`, `FormItem`, `FormLabel`, `FormMessage` (+ `useFormField`, injection keys) | vee-validate integration. We use zod directly today; this adapter is ready for future vee-validate adoption. |
+| `field` | `Field`, `FieldContent`, `FieldDescription`, `FieldError`, `FieldGroup`, `FieldLabel`, `FieldLegend`, `FieldSeparator`, `FieldSet`, `FieldTitle` | lighter field wrapper (no vee-validate coupling). |
+
+## Layout / surface
+
+| Component | Exports | Notes |
+|---|---|---|
+| `card` | `Card`, `CardAction`, `CardContent`, `CardDescription`, `CardFooter`, `CardHeader`, `CardTitle` | |
+| `separator` | `Separator` | horizontal/vertical. |
+| `scroll-area` | `ScrollArea`, `ScrollBar` | custom scrollbars. |
+| `sheet` | `Sheet`, `SheetClose`, `SheetContent`, `SheetDescription`, `SheetFooter`, `SheetHeader`, `SheetTitle`, `SheetTrigger` | slide-over panel. |
+| `sidebar` | `Sidebar`, `SidebarContent`, `SidebarFooter`, `SidebarGroup`, `SidebarGroupAction`, `SidebarGroupContent`, `SidebarGroupLabel`, `SidebarHeader`, `SidebarInput`, `SidebarInset`, `SidebarMenu`, `SidebarMenuAction`, `SidebarMenuBadge`, `SidebarMenuButton`, `SidebarMenuItem`, `SidebarMenuSkeleton`, `SidebarMenuSub`, `SidebarMenuSubButton`, `SidebarMenuSubItem`, `SidebarProvider`, `SidebarRail`, `SidebarSeparator`, `SidebarTrigger` | full app-sidebar system. Use for DashboardLayout navigation. |
+| `skeleton` | `Skeleton` | loading placeholder. |
+
+## Overlays / dialogs
+
+| Component | Exports | Notes |
+|---|---|---|
+| `dialog` | `Dialog`, `DialogClose`, `DialogContent`, `DialogDescription`, `DialogFooter`, `DialogHeader`, `DialogOverlay`, `DialogScrollContent`, `DialogTitle`, `DialogTrigger` | `v-model:open` controlled. Used by `UserEditPage.vue` (FRONT-30) for the block-user confirmation flow (DialogHeader/Title/Description + DialogFooter with cancel/confirm buttons). `alert-dialog` is NOT installed; `dialog` covers confirmation UX. |
+| `popover` | `Popover`, `PopoverAnchor`, `PopoverContent`, `PopoverTrigger` | |
+| `tooltip` | `Tooltip`, `TooltipContent`, `TooltipProvider`, `TooltipTrigger` | wrap app once with `TooltipProvider` if used widely. |
+| `context-menu` | `ContextMenu`, `ContextMenuCheckboxItem`, `ContextMenuContent`, `ContextMenuGroup`, `ContextMenuItem`, `ContextMenuLabel`, `ContextMenuRadioGroup`, `ContextMenuRadioItem`, `ContextMenuSeparator`, `ContextMenuShortcut`, `ContextMenuSub`, `ContextMenuSubContent`, `ContextMenuSubTrigger`, `ContextMenuTrigger` | right-click menu. |
+| `command` | `Command`, `CommandDialog`, `CommandEmpty`, `CommandGroup`, `CommandInput`, `CommandItem`, `CommandList`, `CommandSeparator`, `CommandShortcut` | cmdk-style palette; pair with `dialog` for `CommandDialog`. |
+| `sonner` | `Toaster` (re-exports `vue-sonner`) | call `toast(...)` from `vue-sonner` directly. |
+
+## Navigation / structure
+
+| Component | Exports | Notes |
+|---|---|---|
+| `tabs` | `Tabs`, `TabsContent`, `TabsList`, `TabsTrigger` | |
+| `accordion` | `Accordion`, `AccordionContent`, `AccordionItem`, `AccordionTrigger` | |
+| `breadcrumb` | `Breadcrumb`, `BreadcrumbEllipsis`, `BreadcrumbItem`, `BreadcrumbLink`, `BreadcrumbList`, `BreadcrumbPage`, `BreadcrumbSeparator` | pair with `RouterLink` via `as-child`. |
+| `pagination` | `Pagination`, `PaginationContent`, `PaginationEllipsis`, `PaginationFirst`, `PaginationItem`, `PaginationLast`, `PaginationNext`, `PaginationPrevious` | |
+| `stepper` | `Stepper`, `StepperDescription`, `StepperIndicator`, `StepperItem`, `StepperSeparator`, `StepperTitle`, `StepperTrigger` | multi-step flows. |
+
+## Data display
+
+| Component | Exports | Notes |
+|---|---|---|
+| `table` | `Table`, `TableBody`, `TableCaption`, `TableCell`, `TableEmpty`, `TableFooter`, `TableHead`, `TableHeader`, `TableRow` | styling wrapper; pair with `@tanstack/vue-table` for sorting/filtering. |
+| `avatar` | `Avatar`, `AvatarFallback`, `AvatarImage` | |
+| `chart` | `ChartContainer`, `ChartLegendContent`, `ChartTooltipContent` | wrapper for recharts/echarts (consumer supplies the chart lib). |
+| `calendar` | `Calendar`, `CalendarCell`, `CalendarCellTrigger`, `CalendarGrid`, `CalendarGridBody`, `CalendarGridHead`, `CalendarGridRow`, `CalendarHeadCell`, `CalendarHeader`, `CalendarHeading`, `CalendarNextButton`, `CalendarPrevButton` | single-date picker. |
+| `range-calendar` | `RangeCalendar*` (same shape as `calendar`) | date-range picker. |
+
+## Feedback
+
+| Component | Exports | Notes |
+|---|---|---|
+| `spinner` | `Spinner` | loading spinner. |
+| `alert` | `Alert`, `AlertDescription`, `AlertTitle` (+ `alertVariants`) | cva variants extended: `default`, `destructive`, `success`, `warning`. success/warning use `var(--status-success)` / `var(--status-warning)` per DESIGN.md L1 raw. |
+| `alert-dialog` | — | not installed. |
+
+## Source-of-truth rule reminder
+
+Per `AGENTS.md` UI Source of Truth: native HTML interactive elements (`<button>`, `<input>`, `<select>`, `<a>` for in-app navigation, `<form>` for non-trivial forms, `<table>`, `<textarea>`) are forbidden outside `src/components/ui/*`. New components MUST consume these adapters. Direct `<RouterLink>` is allowed for in-app navigation; `Button as-child` + `RouterLink` for button-styled links.
+
+## Regeneration hazard for hand-extended adapters
+
+`src/components/ui/**` is ignored by ESLint + Prettier (shadcn-vue canon uses double quotes; linting would fight CLI regen). Project-specific extensions to canon files:
+
+- `src/components/ui/alert/index.ts` — `success` and `warning` cva variants consume project L2 tokens (`--success` / `--warning`); see `src/assets/styles/style.css`.
+
+After running `npx shadcn-vue@latest add <component> --overwrite`, re-apply the project extension manually (check this section + `git diff`). The base cva in `alert/index.ts` is regen-safe; only the success/warning variants are bespoke.
+
+## Migration checklist (исторический охват демо)
+
+- [x] `ThemeToggle.vue`: native `<button>` -> `<Button variant="outline" size="icon">` + class overrides.
+- [x] Audit: 0 native interactive elements outside `src/components/ui/*`.
+- [x] `ErrorLayout.vue`: nested `<RouterLink><Button></RouterLink>` -> `<Button as-child><RouterLink></RouterLink></Button>`.
+- [x] `LandingPage.vue`: `<Button as-child size="lg"><RouterLink to="/login">Войти</RouterLink></Button>` CTA.
+- [x] `LoginPage.vue`: inline `<div role="alert">` -> `<Alert variant="destructive"><AlertDescription>`.
+- [x] `LoginPage.vue`: `<Primitive as="form">` accepted pattern. `src/components/ui/form/*` adapter installed for future use.
+- [x] ESLint 9 flat config + Prettier + scripts (`pnpm lint`, `format`, `format:check`). `src/components/ui/**` ignored (shadcn canon).
+
