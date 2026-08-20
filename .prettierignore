@@ -8,3 +8,4 @@ coverage
 pnpm-lock.yaml
 src/components/ui
 *.log
+ZIMA_FleetOps-TZ_v1.6.md
