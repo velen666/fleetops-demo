@@ -245,11 +245,14 @@ function openWork(m: MaintenanceWork): void {
             <button
               class="text-primary hover:underline text-sm"
               @click="
-                router.push({
-                  name: 'incident-details',
-                  params: { incidentId: selected.incidentId },
-                })
-                selected = null
+                () => {
+                  if (!selected?.incidentId) return
+                  router.push({
+                    name: 'incident-details',
+                    params: { incidentId: selected.incidentId },
+                  })
+                  selected = null
+                }
               "
             >
               Открыть связанный инцидент →

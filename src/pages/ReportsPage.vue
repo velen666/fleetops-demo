@@ -370,8 +370,10 @@ function openBreakdown(title: string): void {
               :key="inc.id"
               class="row-interactive cursor-pointer"
               @click="
-                router.push({ name: 'incident-details', params: { incidentId: inc.id } })
-                showBreakdown = false
+                () => {
+                  router.push({ name: 'incident-details', params: { incidentId: inc.id } })
+                  showBreakdown = false
+                }
               "
             >
               <TableCell class="text-xs py-2 px-4 text-primary">{{ inc.incidentNumber }}</TableCell>
