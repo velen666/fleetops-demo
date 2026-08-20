@@ -1,0 +1,170 @@
+import type { User } from '@/types/domain'
+
+export type RoleCode =
+  | 'SYSTEM_ADMIN'
+  | 'SHIFT_OPERATOR'
+  | 'FLEET_OPERATIONS_MANAGER'
+  | 'SERVICE_ENGINEER'
+  | 'SERVICE_MANAGER'
+  | 'SITE_MANAGER'
+  | 'OPERATIONS_DIRECTOR'
+  | 'FINANCE_MANAGER'
+
+export interface RoleDefinition {
+  code: RoleCode
+  name: string
+  shortName: string
+  description: string
+  permissions: string[]
+}
+
+export const ROLE_DEFINITIONS: RoleDefinition[] = [
+  {
+    code: 'SYSTEM_ADMIN',
+    name: 'Администратор системы',
+    shortName: 'Администратор',
+    description: 'Полный доступ: пользователи, роли, справочники, правила, экономика',
+    permissions: [
+      'incidents.read', 'incidents.create', 'incidents.update', 'incidents.state.manage', 'incidents.close', 'incidents.assign',
+      'downtime.read', 'downtime.create', 'downtime.update', 'downtime.confirm', 'downtime.recalculate', 'downtime.rules.manage', 'downtime.rules.publish',
+      'causes.read', 'causes.classify', 'causes.refine', 'causes.confirm', 'causes.revise_confirmed',
+      'actions.read', 'actions.create', 'actions.update', 'actions.complete', 'actions.assign', 'actions.recovery.confirm',
+      'events.read', 'events.create',
+      'economics.read', 'economics.manage', 'economics.rates.manage',
+      'reports.read', 'reports.export',
+      'admin.users.manage', 'admin.roles.manage', 'admin.sites.manage', 'admin.robots.manage',
+      'incidents.timeline.read',
+    ],
+  },
+  {
+    code: 'SHIFT_OPERATOR',
+    name: 'Оператор смены',
+    shortName: 'Оператор',
+    description: 'Регистрация событий и инцидентов, первичная классификация, подтверждение восстановления',
+    permissions: [
+      'incidents.read', 'incidents.create',
+      'downtime.read',
+      'causes.read', 'causes.classify',
+      'actions.read',
+      'events.read', 'events.create',
+      'actions.recovery.confirm',
+      'incidents.timeline.read',
+    ],
+  },
+  {
+    code: 'FLEET_OPERATIONS_MANAGER',
+    name: 'Руководитель эксплуатации роботопарка',
+    shortName: 'Рук. эксплуатации',
+    description: 'Управление инцидентами, координация, простой, подтверждение причин, отчёты',
+    permissions: [
+      'incidents.read', 'incidents.update', 'incidents.state.manage', 'incidents.close', 'incidents.assign',
+      'downtime.read', 'downtime.create', 'downtime.update', 'downtime.confirm', 'downtime.recalculate',
+      'causes.read', 'causes.classify', 'causes.refine', 'causes.confirm', 'causes.revise_confirmed',
+      'actions.read', 'actions.assign',
+      'events.read',
+      'economics.read',
+      'reports.read', 'reports.export',
+      'incidents.timeline.read',
+    ],
+  },
+  {
+    code: 'SERVICE_ENGINEER',
+    name: 'Сервисный инженер',
+    shortName: 'Инженер',
+    description: 'Диагностика, сервисные действия, уточнение причин',
+    permissions: [
+      'incidents.read', 'incidents.update',
+      'downtime.read',
+      'causes.read', 'causes.refine', 'causes.revise_confirmed',
+      'actions.read', 'actions.create', 'actions.update', 'actions.complete',
+      'events.read',
+      'incidents.timeline.read',
+    ],
+  },
+  {
+    code: 'SERVICE_MANAGER',
+    name: 'Руководитель сервиса',
+    shortName: 'Рук. сервиса',
+    description: 'Назначение исполнителей, подтверждение финальной причины, закрытие',
+    permissions: [
+      'incidents.read', 'incidents.state.manage', 'incidents.close', 'incidents.assign',
+      'downtime.read', 'downtime.confirm',
+      'causes.read', 'causes.confirm',
+      'actions.read', 'actions.assign',
+      'events.read',
+      'economics.read',
+      'reports.read',
+      'incidents.timeline.read',
+    ],
+  },
+  {
+    code: 'SITE_MANAGER',
+    name: 'Начальник склада',
+    shortName: 'Нач. склада',
+    description: 'Просмотр состояния объекта, история инцидентов по роботам',
+    permissions: [
+      'incidents.read',
+      'downtime.read',
+      'causes.read',
+      'actions.read',
+      'events.read',
+      'reports.read',
+      'incidents.timeline.read',
+    ],
+  },
+  {
+    code: 'OPERATIONS_DIRECTOR',
+    name: 'Операционный директор',
+    shortName: 'Опер. директор',
+    description: 'Управленческая аналитика, экономика, экспорт отчётов',
+    permissions: [
+      'incidents.read',
+      'downtime.read',
+      'causes.read',
+      'actions.read',
+      'events.read',
+      'economics.read',
+      'reports.read', 'reports.export',
+      'incidents.timeline.read',
+    ],
+  },
+  {
+    code: 'FINANCE_MANAGER',
+    name: 'Финансовый директор',
+    shortName: 'CFO',
+    description: 'Просмотр экономики и ставок, экспорт отчётов',
+    permissions: [
+      'incidents.read',
+      'downtime.read',
+      'economics.read', 'economics.rates.manage',
+      'reports.read', 'reports.export',
+    ],
+  },
+]
+
+export const ROLE_USERS: Record<RoleCode, User> = {
+  SYSTEM_ADMIN: {
+    id: 'u-admin', name: 'Артур Шайхутдинов', email: 'admin@fleetops.local', role: 'Администратор системы', siteIds: ['site-1', 'site-2', 'site-3'],
+  },
+  SHIFT_OPERATOR: {
+    id: 'u-operator', name: 'Елена Смирнова', email: 'operator@fleetops.local', role: 'Оператор смены', siteIds: ['site-1'],
+  },
+  FLEET_OPERATIONS_MANAGER: {
+    id: 'u-fleet-mgr', name: 'Иван Петров', email: 'fleet.mgr@fleetops.local', role: 'Руководитель эксплуатации', siteIds: ['site-1', 'site-2', 'site-3'],
+  },
+  SERVICE_ENGINEER: {
+    id: 'u-engineer', name: 'Сергей Иванов', email: 'engineer@fleetops.local', role: 'Сервисный инженер', siteIds: ['site-1', 'site-2'],
+  },
+  SERVICE_MANAGER: {
+    id: 'u-service-mgr', name: 'Дмитрь Волков', email: 'service.mgr@fleetops.local', role: 'Руководитель сервиса', siteIds: ['site-1', 'site-2', 'site-3'],
+  },
+  SITE_MANAGER: {
+    id: 'u-site-mgr', name: 'Ольга Кузнецова', email: 'site.mgr@fleetops.local', role: 'Начальник склада', siteIds: ['site-1'],
+  },
+  OPERATIONS_DIRECTOR: {
+    id: 'u-ops-dir', name: 'Анна Соколова', email: 'ops.dir@fleetops.local', role: 'Операционный директор', siteIds: ['site-1', 'site-2', 'site-3'],
+  },
+  FINANCE_MANAGER: {
+    id: 'u-cfo', name: 'Михаил Новиков', email: 'cfo@fleetops.local', role: 'Финансовый директор', siteIds: ['site-1', 'site-2', 'site-3'],
+  },
+}

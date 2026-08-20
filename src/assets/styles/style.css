@@ -1,0 +1,396 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: Montserrat, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-accent-2: var(--accent-2);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-heading: var(--font-sans);
+}
+
+/* ===================================================================
+   L1 — Brand raw tokens (theme-independent constants)
+   Light variants in :root, dark variants redefined in .dark below.
+   =================================================================== */
+:root {
+  /* Primary brand blue scale */
+  --brand-blue-400: #5abee6;
+  --brand-blue-450: #00aeef;
+  --brand-blue-500: #00a0e9;
+  --brand-blue-600: #0088cc;
+  --brand-blue-700: #006ba3;
+
+  /* Accents (only consumed by themes that include them) */
+  --brand-cyan-400: #22d3ee;
+  --brand-violet-500: #7c3aed;
+  --brand-teal-500: #10b981;
+  --brand-magenta-500: #ec4899;
+
+  /* Status colors (shared across all themes) */
+  --status-success: #27ae60;
+  --status-success-alt: #28ca41;
+  --status-warning: #ffbd2e;
+  --status-warning-alt: #fcd34d;
+  --status-destructive: oklch(0.577 0.245 27.325);
+
+  /* Neutral scale (light values; .dark swaps to inverse) */
+  --neutral-050: oklch(0.985 0 0);
+  --neutral-100: oklch(0.97 0 0);
+  --neutral-200: oklch(0.922 0 0);
+  --neutral-300: oklch(0.83 0 0);
+  --neutral-500: oklch(0.556 0 0);
+  --neutral-700: oklch(0.32 0 0);
+  --neutral-900: oklch(0.145 0 0);
+
+  /* Radius base (Tailwind v4 maps --radius-lg here) */
+  --radius: 0.625rem;
+
+  /* Shadow scale (extended with glass level) */
+  --shadow-flat: none;
+  --shadow-sm: rgba(0, 0, 0, 0.04) 0px 4px 24px 0px;
+  --shadow-md: rgba(0, 0, 0, 0.08) 0px 8px 32px 0px, rgba(0, 0, 0, 0.04) 0px 2px 8px 0px;
+  --shadow-lg: rgba(0, 0, 0, 0.25) 0px 25px 50px -12px;
+  --shadow-glass: inset 0 1px 0 rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.32) 0px 12px 36px 0px;
+
+  /* L2 defaults — theme = blue-cyan-violet, mode = light
+     (defensive: applies when no data-theme attribute set) */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: var(--brand-blue-500);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: var(--brand-cyan-400);
+  --accent-foreground: oklch(0.145 0 0);
+  --accent-2: var(--brand-violet-500);
+  --destructive: var(--status-destructive);
+  --success: oklch(0.45 0.13 150);
+  --warning: oklch(0.5 0.14 75);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: var(--brand-blue-500);
+  --chart-1: var(--brand-blue-500);
+  --chart-2: var(--brand-cyan-400);
+  --chart-3: var(--brand-violet-500);
+  --chart-4: var(--brand-teal-500);
+  --chart-5: var(--brand-magenta-500);
+  --sidebar: var(--neutral-050);
+  --sidebar-foreground: var(--neutral-900);
+  --sidebar-primary: var(--brand-blue-500);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: var(--neutral-100);
+  --sidebar-accent-foreground: var(--neutral-900);
+  --sidebar-border: var(--neutral-200);
+  --sidebar-ring: var(--neutral-500);
+
+  /* L3 — Gradient & glass tokens (compose L1/L2 via color-mix) */
+  --gradient-primary: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+  --gradient-glow: radial-gradient(
+    circle at 50% -20%,
+    color-mix(in oklch, var(--primary) 35%, transparent) 0%,
+    transparent 60%
+  );
+  --gradient-surface: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--foreground) 8%, transparent) 0%,
+    color-mix(in oklch, var(--foreground) 2%, transparent) 100%
+  );
+  --gradient-border: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--foreground) 12%, transparent) 0%,
+    color-mix(in oklch, var(--foreground) 4%, transparent) 100%
+  );
+  --gradient-hero: radial-gradient(
+    120% 80% at 50% 0%,
+    color-mix(in oklch, var(--accent-2, var(--primary)) 18%, var(--background)) 0%,
+    var(--background) 70%
+  );
+  --shadow-glow-primary: 0 12px 36px color-mix(in oklch, var(--primary) 28%, transparent);
+}
+
+/* ===================================================================
+   L2 — Theme overrides (light mode)
+   blue-cyan-violet is the :root default above.
+   =================================================================== */
+[data-theme='blue'] {
+  /* Monochrome blue theme: accent falls back to lighter blue */
+  --primary: var(--brand-blue-500);
+  --accent: var(--brand-blue-400);
+  --accent-2: var(--brand-blue-450);
+  --ring: var(--brand-blue-500);
+  --chart-1: var(--brand-blue-500);
+  --chart-2: var(--brand-blue-450);
+  --chart-3: var(--brand-blue-400);
+  --chart-4: var(--brand-blue-600);
+  --chart-5: var(--brand-blue-700);
+}
+
+[data-theme='blue-teal'] {
+  --primary: var(--brand-blue-500);
+  --accent: var(--brand-teal-500);
+  /* accent-2 aliased to --primary in non-violet themes (gradient-hero composes correctly) */
+  --accent-2: var(--primary);
+  --ring: var(--brand-blue-500);
+  --chart-1: var(--brand-blue-500);
+  --chart-2: var(--brand-teal-500);
+  --chart-3: var(--brand-blue-450);
+  --chart-4: var(--brand-blue-400);
+  --chart-5: var(--brand-blue-600);
+}
+
+[data-theme='blue-magenta'] {
+  --primary: var(--brand-blue-500);
+  --accent: var(--brand-magenta-500);
+  /* accent-2 aliased to --primary in non-violet themes (gradient-hero composes correctly) */
+  --accent-2: var(--primary);
+  --ring: var(--brand-blue-500);
+  --chart-1: var(--brand-blue-500);
+  --chart-2: var(--brand-magenta-500);
+  --chart-3: var(--brand-blue-450);
+  --chart-4: var(--brand-blue-400);
+  --chart-5: var(--brand-blue-600);
+}
+
+/* [data-theme="blue-cyan-violet"] — already the :root default, no override needed */
+
+/* ===================================================================
+   L2 — Dark mode overrides per theme
+   Dark is default in index.html; light is opt-in via removing .dark.
+   Specificity: [data-theme="X"].dark = (0,2,0) beats :root and .dark alone.
+   =================================================================== */
+.dark,
+[data-theme='blue'].dark,
+[data-theme='blue-cyan-violet'].dark,
+[data-theme='blue-teal'].dark,
+[data-theme='blue-magenta'].dark {
+  /* Neutral scale inversion for dark */
+  --neutral-050: oklch(0.145 0 0);
+  --neutral-100: oklch(0.205 0 0);
+  --neutral-200: oklch(0.269 0 0);
+  --neutral-300: oklch(0.4 0 0);
+  --neutral-500: oklch(0.708 0 0);
+  --neutral-700: oklch(0.768 0 0);
+  --neutral-900: oklch(0.985 0 0);
+
+  /* Darker, more saturated shadows for depth on dark bg */
+  --shadow-sm: rgba(0, 0, 0, 0.5) 0px 4px 24px 0px;
+  --shadow-md: rgba(0, 0, 0, 0.55) 0px 8px 32px 0px, rgba(0, 0, 0, 0.4) 0px 2px 8px 0px;
+  --shadow-glass: inset 0 1px 0 rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.5) 0px 12px 36px 0px;
+
+  /* Status destructive tuned for dark */
+  --status-destructive: oklch(0.704 0.191 22.216);
+
+  /* Semantic tokens for default theme (blue-cyan-violet) dark mode */
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: #38bdf8;
+  --primary-foreground: oklch(0.145 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: #67e8f9;
+  --accent-foreground: oklch(0.145 0 0);
+  --accent-2: #a78bfa;
+  --destructive: var(--status-destructive);
+  --success: var(--status-success);
+  --warning: var(--status-warning);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: #38bdf8;
+  --chart-1: #38bdf8;
+  --chart-2: #67e8f9;
+  --chart-3: #a78bfa;
+  --chart-4: #34d399;
+  --chart-5: #f472b6;
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: #38bdf8;
+  --sidebar-primary-foreground: oklch(0.145 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+}
+
+/* Per-theme dark accent overrides
+   (only colors that change between themes; neutral/bg/etc inherited from .dark above) */
+[data-theme='blue'].dark {
+  --primary: #38bdf8;
+  --accent: #7dd3fc;
+  --accent-2: #38bdf8;
+  --ring: #38bdf8;
+  --chart-1: #38bdf8;
+  --chart-2: #7dd3fc;
+  --chart-3: #0ea5e9;
+  --chart-4: #0284c7;
+  --chart-5: #38bdf8;
+  --sidebar-primary: #38bdf8;
+}
+
+[data-theme='blue-teal'].dark {
+  --primary: #38bdf8;
+  --accent: #34d399;
+  --accent-2: #38bdf8;
+  --ring: #38bdf8;
+  --chart-1: #38bdf8;
+  --chart-2: #34d399;
+  --chart-3: #7dd3fc;
+  --chart-4: #0ea5e9;
+  --chart-5: #0284c7;
+  --sidebar-primary: #38bdf8;
+}
+
+[data-theme='blue-magenta'].dark {
+  --primary: #38bdf8;
+  --accent: #f472b6;
+  --accent-2: #38bdf8;
+  --ring: #38bdf8;
+  --chart-1: #38bdf8;
+  --chart-2: #f472b6;
+  --chart-3: #7dd3fc;
+  --chart-4: #0ea5e9;
+  --chart-5: #0284c7;
+  --sidebar-primary: #38bdf8;
+}
+
+/* [data-theme="blue-cyan-violet"].dark — already the .dark block default */
+
+/* ===================================================================
+   Base layer + glass fallback for older browsers
+   =================================================================== */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    font-family: var(--font-sans);
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+  }
+}
+
+/* ── Custom scrollbar (global) ──────────────────────────────────────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--muted-foreground) 35%, transparent) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--muted-foreground) 35%, transparent);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --gradient-surface: var(--card);
+  }
+}
+
+/* ── Interactive card hover effect ─────────────────────────────────────── */
+.card-interactive {
+  position: relative;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+}
+.card-interactive:hover {
+  border-color: color-mix(in oklch, var(--primary) 50%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 30%, transparent),
+              0 4px 12px color-mix(in oklch, var(--primary) 10%, transparent);
+  transform: translateY(-1px);
+}
+
+/* ── Row hover effect ─────────────────────────────────────────────────── */
+.row-interactive {
+  transition: background-color 0.15s ease;
+}
+.row-interactive:hover {
+  background: color-mix(in oklch, var(--primary) 6%, transparent);
+}
+
+/* ── KPI card click affordance ────────────────────────────────────────── */
+.kpi-clickable {
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.kpi-clickable:hover {
+  border-color: color-mix(in oklch, var(--primary) 40%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 20%, transparent);
+}
+
+/* ── Tab content spacing ──────────────────────────────────────────────── */
+.tabs-content-spacing {
+  padding-top: 1rem;
+}

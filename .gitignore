@@ -1,0 +1,17 @@
+.idea/
+node_modules
+dist
+dist-ssr
+.DS_Store
+*.local
+.vite
+.env
+.env.*
+!.env.example
+
+.opencode
+opencode.json
+
+test-results/
+e2e-report/
+e2e/screenshots/

@@ -1,0 +1,129 @@
+/**
+ * Русские локализации статусов и кодов для demo.
+ * По ТЗ v1.4 §13: машинные коды — вторичный текст, не основной.
+ */
+
+export const INCIDENT_STATUS_RU: Record<string, string> = {
+  OPEN: 'Новый',
+  IN_PROGRESS: 'В работе',
+  WAITING: 'Ожидает сервисных работ',
+  READY_TO_CLOSE: 'Готов к закрытию',
+  CLOSED: 'Закрыт',
+}
+
+export const INCIDENT_STATUS_CLASS: Record<string, string> = {
+  OPEN: 'bg-warning/15 text-warning',
+  IN_PROGRESS: 'bg-primary/15 text-primary',
+  WAITING: 'bg-orange-500/15 text-orange-500',
+  READY_TO_CLOSE: 'bg-cyan-500/15 text-cyan-500',
+  CLOSED: 'bg-success/15 text-success',
+}
+
+export const SEVERITY_RU: Record<string, string> = {
+  LOW: 'Низкий',
+  MEDIUM: 'Средний',
+  HIGH: 'Высокий',
+  CRITICAL: 'Критический',
+}
+
+export const CAUSE_MATURITY_RU: Record<string, string> = {
+  PRIMARY: 'Предварительная',
+  REFINED: 'Уточнённая',
+  FINAL: 'Подтверждённая',
+  NONE: 'Не определена',
+}
+
+export const DOWNTIME_STATUS_RU: Record<string, string> = {
+  PROPOSED: 'Ожидает подтверждения',
+  CONFIRMED: 'Подтверждён',
+  REJECTED: 'Отклонён',
+}
+
+export const DOWNTIME_STATUS_CLASS: Record<string, string> = {
+  PROPOSED: 'bg-warning/15 text-warning',
+  CONFIRMED: 'bg-success/15 text-success',
+  REJECTED: 'bg-destructive/15 text-destructive',
+}
+
+export const INTERVAL_STATUS_RU: Record<string, string> = {
+  OPEN: 'Открыт',
+  CLOSED: 'Подтверждён',
+}
+
+export const EVENT_STATUS_RU: Record<string, string> = {
+  RECEIVED: 'Принято',
+  NORMALIZED: 'Нормализовано',
+  INCIDENT_CREATED: 'Создан инцидент',
+  LINKED_TO_INCIDENT: 'Привязан к инциденту',
+  DUPLICATE_REJECTED: 'Отброшен как дубликат',
+  INFORMATIONAL: 'Информационное',
+  NEEDS_CLASSIFICATION: 'Требует разбора',
+  ERROR: 'Ошибка обработки',
+}
+
+export const EVENT_STATUS_CLASS: Record<string, string> = {
+  INCIDENT_CREATED: 'bg-success/15 text-success',
+  LINKED_TO_INCIDENT: 'bg-success/15 text-success',
+  NEEDS_CLASSIFICATION: 'bg-warning/15 text-warning',
+  INFORMATIONAL: 'bg-muted text-muted-foreground',
+  DUPLICATE_REJECTED: 'bg-muted text-muted-foreground',
+  ERROR: 'bg-destructive/15 text-destructive',
+}
+
+export const ACTION_STATUS_RU: Record<string, string> = {
+  CREATED: 'Назначено',
+  IN_PROGRESS: 'В работе',
+  COMPLETED: 'Выполнено',
+  CANCELLED: 'Отменено',
+}
+
+export const ACTION_STATUS_CLASS: Record<string, string> = {
+  CREATED: 'bg-muted text-muted-foreground',
+  IN_PROGRESS: 'bg-primary/15 text-primary',
+  COMPLETED: 'bg-success/15 text-success',
+  CANCELLED: 'bg-destructive/15 text-destructive',
+}
+
+export const ACTION_RESULT_RU: Record<string, string> = {
+  SUCCESS: 'Результат подтверждён',
+  PARTIAL_SUCCESS: 'Частично',
+  FAILURE: 'Неуспешно',
+  POSTPONED: 'Отложено',
+}
+
+export const RESPONSIBILITY_ZONE_RU: Record<string, string> = {
+  SERVICE: 'Сервис',
+  OPERATIONS: 'Эксплуатация склада',
+  IT: 'ИТ-инфраструктура',
+  INFRASTRUCTURE: 'Инфраструктура объекта',
+  VENDOR: 'Вендор',
+  UNKNOWN: 'Не определена',
+}
+
+export const MAINTENANCE_STATUS_RU: Record<string, string> = {
+  PLANNED: 'Запланировано',
+  ASSIGNED: 'Назначено',
+  IN_PROGRESS: 'В работе',
+  WAITING_PARTS: 'Ожидает запчастей',
+  DONE: 'Выполнено',
+  RESULT_CONFIRMED: 'Результат подтверждён',
+  CANCELLED: 'Отменено',
+}
+
+export const MAINTENANCE_TYPE_RU: Record<string, string> = {
+  EMERGENCY: 'Аварийный ремонт',
+  PLANNED: 'Плановое ТО',
+  CORRECTIVE: 'Корректирующая работа',
+  DIAGNOSTIC: 'Диагностика',
+}
+
+/** Источник: класс → экземпляр */
+export const SOURCE_INSTANCE: Record<string, Record<string, string>> = {
+  'site-obh': { RMS: 'HIK RMS · Обухово', WMS: 'WMS · Обухово', MANUAL: 'Оператор смены' },
+  'site-pod': { RMS: 'Fleet Manager · Подольск', WMS: 'WMS · Подольск', MANUAL: 'Оператор смены' },
+  'site-dom': { RMS: 'Quicktron RCS · Домодедово', WMS: 'WMS · Домодедово', MANUAL: 'Оператор смены' },
+}
+
+export function sourceInstanceLabel(source: string, siteId: string): string {
+  return SOURCE_INSTANCE[siteId]?.[source] ?? source
+}
