@@ -24,13 +24,23 @@ export const router = createRouter({
           path: 'events',
           name: 'events',
           component: () => import('@/pages/EventsListPage.vue'),
-          meta: { title: 'События', icon: 'Radio', sidebarOrder: 20, requiredPermission: 'events.read' },
+          meta: {
+            title: 'События',
+            icon: 'Radio',
+            sidebarOrder: 20,
+            requiredPermission: 'events.read',
+          },
         },
         {
           path: 'incidents',
           name: 'incidents',
           component: () => import('@/pages/IncidentsListPage.vue'),
-          meta: { title: 'Инциденты', icon: 'AlertTriangle', sidebarOrder: 30, requiredPermission: 'incidents.read' },
+          meta: {
+            title: 'Инциденты',
+            icon: 'AlertTriangle',
+            sidebarOrder: 30,
+            requiredPermission: 'incidents.read',
+          },
         },
         {
           path: 'incidents/:incidentId',
@@ -42,13 +52,23 @@ export const router = createRouter({
           path: 'downtimes',
           name: 'downtimes',
           component: () => import('@/pages/DowntimesPage.vue'),
-          meta: { title: 'Простои', icon: 'Clock', sidebarOrder: 40, requiredPermission: 'downtime.read' },
+          meta: {
+            title: 'Простои',
+            icon: 'Clock',
+            sidebarOrder: 40,
+            requiredPermission: 'downtime.read',
+          },
         },
         {
           path: 'analytics',
           name: 'analytics',
           component: () => import('@/pages/AnalyticsPage.vue'),
-          meta: { title: 'Аналитика и экономика', icon: 'TrendingDown', sidebarOrder: 50, requiredPermission: 'economics.read' },
+          meta: {
+            title: 'Аналитика и экономика',
+            icon: 'TrendingDown',
+            sidebarOrder: 50,
+            requiredPermission: 'economics.read',
+          },
         },
         {
           path: 'robots',
@@ -66,13 +86,23 @@ export const router = createRouter({
           path: 'maintenance',
           name: 'maintenance',
           component: () => import('@/pages/MaintenancePage.vue'),
-          meta: { title: 'ТОиР', icon: 'Wrench', sidebarOrder: 65, requiredPermission: 'actions.read' },
+          meta: {
+            title: 'ТОиР',
+            icon: 'Wrench',
+            sidebarOrder: 65,
+            requiredPermission: 'actions.read',
+          },
         },
         {
           path: 'reports',
           name: 'reports',
           component: () => import('@/pages/ReportsPage.vue'),
-          meta: { title: 'Отчёты', icon: 'FileText', sidebarOrder: 70, requiredPermission: 'reports.read' },
+          meta: {
+            title: 'Отчёты',
+            icon: 'FileText',
+            sidebarOrder: 70,
+            requiredPermission: 'reports.read',
+          },
         },
       ],
     },
@@ -89,7 +119,11 @@ router.beforeEach((to) => {
     return { name: 'login' }
   }
   // RBAC: проверка прав при прямом URL
-  if (to.meta.requiredPermission && auth.isAuthenticated && !auth.can(to.meta.requiredPermission as string)) {
+  if (
+    to.meta.requiredPermission &&
+    auth.isAuthenticated &&
+    !auth.can(to.meta.requiredPermission as string)
+  ) {
     return { name: 'overview' }
   }
 })

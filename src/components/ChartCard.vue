@@ -14,7 +14,17 @@ import {
   Filler,
 } from 'chart.js'
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend, Filler)
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+)
 
 const props = defineProps<{
   type: 'bar' | 'bar-stacked' | 'line'
@@ -28,7 +38,16 @@ const props = defineProps<{
   suffix?: string
 }>()
 
-const DEFAULT_COLORS = ['#00a0e9', '#ff6b6b', '#fcd34d', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316']
+const DEFAULT_COLORS = [
+  '#00a0e9',
+  '#ff6b6b',
+  '#fcd34d',
+  '#10b981',
+  '#8b5cf6',
+  '#ec4899',
+  '#06b6d4',
+  '#f97316',
+]
 
 const chartData = computed(() => ({
   labels: props.labels,
@@ -49,6 +68,16 @@ const chartData = computed(() => ({
 
 const options = computed(() => {
   const suffix = props.suffix ?? ''
+  // Shared tooltip label: works for bar (parsed number/object) and line charts.
+  const tooltipLabel = (raw: unknown): string => {
+    const ctx = raw as {
+      dataset?: { label?: string }
+      parsed?: number | { x?: number; y?: number }
+    }
+    const parsed = ctx.parsed
+    const val = typeof parsed === 'number' ? parsed : (parsed?.y ?? parsed?.x ?? 0)
+    return `${ctx.dataset?.label ?? ''}: ${val.toLocaleString('ru-RU')}${suffix}`
+  }
   const base = {
     responsive: true,
     maintainAspectRatio: false,
@@ -60,7 +89,12 @@ const options = computed(() => {
       legend: {
         display: props.datasets.length > 1,
         position: 'bottom' as const,
-        labels: { color: '#94a3b8', font: { size: 11 }, usePointStyle: true, pointStyle: 'circle' as const },
+        labels: {
+          color: '#94a3b8',
+          font: { size: 11 },
+          usePointStyle: true,
+          pointStyle: 'circle' as const,
+        },
       },
       tooltip: {
         backgroundColor: 'rgba(15,23,42,0.95)',
@@ -68,10 +102,7 @@ const options = computed(() => {
         bodyColor: '#cbd5e1',
         padding: 10,
         callbacks: {
-          label: (ctx: { dataset: { label?: string }; parsed: number | { x?: number; y?: number } }) => {
-            const val = typeof ctx.parsed === 'number' ? ctx.parsed : ctx.parsed.y ?? ctx.parsed.x ?? 0
-            return `${ctx.dataset.label}: ${val.toLocaleString('ru-RU')}${suffix}`
-          },
+          label: tooltipLabel as never,
         },
       },
     },
@@ -84,8 +115,9 @@ const options = computed(() => {
       x: {
         stacked: props.type === 'bar-stacked',
         ticks: {
-          color: '#64748b', font: { size: 10 },
-          callback: (val: unknown) => typeof val === 'number' ? val.toLocaleString('ru-RU') : val,
+          color: '#64748b',
+          font: { size: 10 },
+          callback: (val: unknown) => (typeof val === 'number' ? val.toLocaleString('ru-RU') : val),
         },
         grid: { color: 'rgba(148,163,184,0.08)' },
       },
@@ -101,7 +133,7 @@ const options = computed(() => {
 
 <template>
   <div class="relative h-64">
-    <Bar v-if="type !== 'line'" :data="chartData" :options="options" />
-    <Line v-else :data="chartData" :options="options" />
+    <Bar v-if="type !== 'line'" :data="chartData" :options="options as never" />
+    <Line v-else :data="chartData" :options="options as never" />
   </div>
 </template>

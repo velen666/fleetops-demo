@@ -4,7 +4,16 @@ import { useRoute, useRouter, RouterView } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { Button } from '@/components/ui/button'
 import {
-  LayoutDashboard, Radio, AlertTriangle, Clock, TrendingDown, Bot, FileText, LogOut, Wrench, MapPin,
+  LayoutDashboard,
+  Radio,
+  AlertTriangle,
+  Clock,
+  TrendingDown,
+  Bot,
+  FileText,
+  LogOut,
+  Wrench,
+  MapPin,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 
@@ -13,7 +22,15 @@ const router = useRouter()
 const auth = useAuthStore()
 
 const iconMap: Record<string, Component> = {
-  LayoutDashboard, Radio, AlertTriangle, Clock, TrendingDown, Bot, FileText, Wrench, MapPin,
+  LayoutDashboard,
+  Radio,
+  AlertTriangle,
+  Clock,
+  TrendingDown,
+  Bot,
+  FileText,
+  Wrench,
+  MapPin,
 }
 
 interface NavItem {
@@ -26,12 +43,42 @@ interface NavItem {
 
 const allNavItems: NavItem[] = [
   { name: 'overview', title: 'Обзор', icon: 'LayoutDashboard', sidebarOrder: 10 },
-  { name: 'events', title: 'События', icon: 'Radio', sidebarOrder: 20, requiredPermission: 'events.read' },
-  { name: 'incidents', title: 'Инциденты', icon: 'AlertTriangle', sidebarOrder: 30, requiredPermission: 'incidents.read' },
-  { name: 'downtimes', title: 'Простои', icon: 'Clock', sidebarOrder: 40, requiredPermission: 'downtime.read' },
-  { name: 'analytics', title: 'Аналитика и экономика', icon: 'TrendingDown', sidebarOrder: 50, requiredPermission: 'economics.read' },
+  {
+    name: 'events',
+    title: 'События',
+    icon: 'Radio',
+    sidebarOrder: 20,
+    requiredPermission: 'events.read',
+  },
+  {
+    name: 'incidents',
+    title: 'Инциденты',
+    icon: 'AlertTriangle',
+    sidebarOrder: 30,
+    requiredPermission: 'incidents.read',
+  },
+  {
+    name: 'downtimes',
+    title: 'Простои',
+    icon: 'Clock',
+    sidebarOrder: 40,
+    requiredPermission: 'downtime.read',
+  },
+  {
+    name: 'analytics',
+    title: 'Аналитика и экономика',
+    icon: 'TrendingDown',
+    sidebarOrder: 50,
+    requiredPermission: 'economics.read',
+  },
   { name: 'robots', title: 'Роботы и объекты', icon: 'Bot', sidebarOrder: 60 },
-  { name: 'reports', title: 'Отчёты', icon: 'FileText', sidebarOrder: 70, requiredPermission: 'reports.read' },
+  {
+    name: 'reports',
+    title: 'Отчёты',
+    icon: 'FileText',
+    sidebarOrder: 70,
+    requiredPermission: 'reports.read',
+  },
 ]
 
 const navItems = computed(() =>
@@ -54,7 +101,9 @@ function logout(): void {
   <div class="flex h-screen bg-background text-foreground">
     <aside class="flex w-64 flex-col border-r border-border bg-sidebar">
       <div class="flex h-14 items-center gap-2 border-b border-sidebar-border px-4">
-        <div class="size-8 rounded-lg bg-gradient-to-br from-brand-blue-500 to-brand-blue-700 flex items-center justify-center">
+        <div
+          class="size-8 rounded-lg bg-gradient-to-br from-brand-blue-500 to-brand-blue-700 flex items-center justify-center"
+        >
           <Bot class="size-5 text-white" />
         </div>
         <span class="text-lg font-semibold tracking-tight">FleetOps</span>
@@ -79,7 +128,9 @@ function logout(): void {
 
       <div class="border-t border-sidebar-border p-3">
         <div class="flex items-center gap-2 px-2 py-1.5 mb-2">
-          <div class="size-8 rounded-full bg-primary/15 flex items-center justify-center text-primary font-semibold text-sm">
+          <div
+            class="size-8 rounded-full bg-primary/15 flex items-center justify-center text-primary font-semibold text-sm"
+          >
             {{ auth.user?.name?.charAt(0) ?? '?' }}
           </div>
           <div class="flex-1 min-w-0">
@@ -87,7 +138,12 @@ function logout(): void {
             <p class="text-xs text-muted-foreground truncate">{{ auth.user?.role }}</p>
           </div>
         </div>
-        <Button variant="ghost" size="sm" class="w-full justify-start text-muted-foreground" @click="logout">
+        <Button
+          variant="ghost"
+          size="sm"
+          class="w-full justify-start text-muted-foreground"
+          @click="logout"
+        >
           <LogOut class="size-4 mr-2" />
           Сменить роль
         </Button>
@@ -99,9 +155,9 @@ function logout(): void {
         <h1 class="text-lg font-semibold">{{ currentTitle }}</h1>
       </header>
       <main class="flex-1 overflow-y-auto p-6">
-        <RouterView v-slot="{ Component }">
+        <RouterView v-slot="{ Component: ViewComponent }">
           <KeepAlive>
-            <component :is="Component" />
+            <component :is="ViewComponent" />
           </KeepAlive>
         </RouterView>
       </main>

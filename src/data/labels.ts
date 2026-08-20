@@ -121,7 +121,11 @@ export const MAINTENANCE_TYPE_RU: Record<string, string> = {
 export const SOURCE_INSTANCE: Record<string, Record<string, string>> = {
   'site-obh': { RMS: 'HIK RMS · Обухово', WMS: 'WMS · Обухово', MANUAL: 'Оператор смены' },
   'site-pod': { RMS: 'Fleet Manager · Подольск', WMS: 'WMS · Подольск', MANUAL: 'Оператор смены' },
-  'site-dom': { RMS: 'Quicktron RCS · Домодедово', WMS: 'WMS · Домодедово', MANUAL: 'Оператор смены' },
+  'site-dom': {
+    RMS: 'Quicktron RCS · Домодедово',
+    WMS: 'WMS · Домодедово',
+    MANUAL: 'Оператор смены',
+  },
 }
 
 export function sourceInstanceLabel(source: string, siteId: string): string {

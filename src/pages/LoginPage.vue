@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { useAuthStore } from '@/stores/auth'
 import { ROLE_DEFINITIONS, type RoleCode } from '@/data/roles'
-import { Button } from '@/components/ui/button'
-import { Bot, ShieldCheck, Wrench, Eye, TrendingUp, Users, AlertTriangle, Settings } from 'lucide-vue-next'
+import {} from '@/components/ui/button'
+import { Bot, ShieldCheck, Wrench, Eye, TrendingUp, Users, Settings } from 'lucide-vue-next'
 import type { Component } from 'vue'
 
 const auth = useAuthStore()
@@ -29,16 +29,22 @@ function enter(code: RoleCode): void {
     <div class="w-full max-w-3xl space-y-6">
       <div class="text-center space-y-2">
         <div class="flex justify-center">
-          <div class="size-16 rounded-2xl bg-gradient-to-br from-brand-blue-500 to-brand-blue-700 flex items-center justify-center">
+          <div
+            class="size-16 rounded-2xl bg-gradient-to-br from-brand-blue-500 to-brand-blue-700 flex items-center justify-center"
+          >
             <Bot class="size-8 text-white" />
           </div>
         </div>
         <h1 class="text-2xl font-bold">FleetOps</h1>
-        <p class="text-muted-foreground text-sm">Управление эксплуатацией роботизированного парка</p>
+        <p class="text-muted-foreground text-sm">
+          Управление эксплуатацией роботизированного парка
+        </p>
       </div>
 
       <div>
-        <p class="text-center text-sm text-muted-foreground mb-4">Выберите роль для входа в систему</p>
+        <p class="text-center text-sm text-muted-foreground mb-4">
+          Выберите роль для входа в систему
+        </p>
         <div class="grid gap-3 sm:grid-cols-2">
           <button
             v-for="role in ROLE_DEFINITIONS"

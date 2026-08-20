@@ -41,6 +41,10 @@ export default defineConfigWithVueTs(
       'vuejs-accessibility/label-has-for': 'off',
       'vuejs-accessibility/no-autofocus': 'off',
       'vuejs-accessibility/anchor-has-content': 'off',
+      // Демо-стенд: кликабельные строки-карточки таблиц — сознательный паттерн
+      // (переход в карточку); полноценная клавиатурная навигация — backlog.
+      'vuejs-accessibility/click-events-have-key-events': 'off',
+      'vuejs-accessibility/no-static-element-interactions': 'off',
     },
   },
 )

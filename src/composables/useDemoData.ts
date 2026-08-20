@@ -1,8 +1,18 @@
 import { ref, computed } from 'vue'
 import type {
-  Incident, OperationalEvent, Downtime, ServiceAction,
-  RecoveryConfirmation, TimelineEntry, Robot, Site,
-  CauseClassification, DowntimeRule, CostRate, CostSnapshot, MaintenanceWork,
+  Incident,
+  OperationalEvent,
+  Downtime,
+  ServiceAction,
+  RecoveryConfirmation,
+  TimelineEntry,
+  Robot,
+  Site,
+  CauseClassification,
+  DowntimeRule,
+  CostRate,
+  CostSnapshot,
+  MaintenanceWork,
 } from '@/types/domain'
 import { generateDemoData } from '@/data/generator'
 
@@ -41,18 +51,29 @@ const stats = computed(() => {
     .filter((d) => d.confirmationStatus === 'CONFIRMED')
     .reduce((sum, d) => sum + safeNumber(d.lossRubles), 0)
   const activeIncidents = incs.filter((i) => i.status !== 'CLOSED').length
-  const unclassifiedCount = incs.filter((i) => i.causeMaturity === 'NONE' || i.causeCode === 'CA-060').length
+  const unclassifiedCount = incs.filter(
+    (i) => i.causeMaturity === 'NONE' || i.causeCode === 'CA-060',
+  ).length
   const classifiedCount = incs.length - unclassifiedCount
   const totalIncidents = incs.length
-  const availability = totalPeriodSeconds > 0 ? 100 - (totalDowntime / totalPeriodSeconds) * 100 : 100
+  const availability =
+    totalPeriodSeconds > 0 ? 100 - (totalDowntime / totalPeriodSeconds) * 100 : 100
 
   const needsAttention = incs
-    .filter((i) => i.status !== 'CLOSED' && (i.causeMaturity === 'NONE' || !i.coordinatorId || (i.hasDowntime && !i.downtimeConfirmed)))
+    .filter(
+      (i) =>
+        i.status !== 'CLOSED' &&
+        (i.causeMaturity === 'NONE' || !i.coordinatorId || (i.hasDowntime && !i.downtimeConfirmed)),
+    )
     .slice(0, 5)
     .map((i) => ({
       incidentId: i.id,
       incidentNumber: i.incidentNumber,
-      reason: !i.coordinatorId ? 'Нет координатора' : i.causeMaturity === 'NONE' ? 'Нет причины' : 'Простой не подтверждён',
+      reason: !i.coordinatorId
+        ? 'Нет координатора'
+        : i.causeMaturity === 'NONE'
+          ? 'Нет причины'
+          : 'Простой не подтверждён',
       detail: i.description,
     }))
 
@@ -96,13 +117,22 @@ const analytics = computed(() => {
   for (const inc of incs) {
     if (safeNumber(inc.lossRubles) > 0) {
       const causeKey = inc.causeCode ?? 'UNDEFINED'
-      const existing = lossByCause.get(causeKey) ?? { code: causeKey, name: causeKey, loss: 0, count: 0 }
+      const existing = lossByCause.get(causeKey) ?? {
+        code: causeKey,
+        name: causeKey,
+        loss: 0,
+        count: 0,
+      }
       existing.loss += inc.lossRubles
       existing.count++
       lossByCause.set(causeKey, existing)
 
       const siteName = sts.find((site) => site.id === inc.siteId)?.name ?? inc.siteId
-      const siteExisting = lossBySiteMap.get(inc.siteId) ?? { siteId: inc.siteId, siteName, loss: 0 }
+      const siteExisting = lossBySiteMap.get(inc.siteId) ?? {
+        siteId: inc.siteId,
+        siteName,
+        loss: 0,
+      }
       siteExisting.loss += inc.lossRubles
       lossBySiteMap.set(inc.siteId, siteExisting)
     }

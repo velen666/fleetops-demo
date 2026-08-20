@@ -363,12 +363,16 @@
 /* ── Interactive card hover effect ─────────────────────────────────────── */
 .card-interactive {
   position: relative;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.15s ease;
 }
 .card-interactive:hover {
   border-color: color-mix(in oklch, var(--primary) 50%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 30%, transparent),
-              0 4px 12px color-mix(in oklch, var(--primary) 10%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--primary) 30%, transparent),
+    0 4px 12px color-mix(in oklch, var(--primary) 10%, transparent);
   transform: translateY(-1px);
 }
 
@@ -383,7 +387,9 @@
 /* ── KPI card click affordance ────────────────────────────────────────── */
 .kpi-clickable {
   cursor: pointer;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 .kpi-clickable:hover {
   border-color: color-mix(in oklch, var(--primary) 40%, transparent);

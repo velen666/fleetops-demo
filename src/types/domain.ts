@@ -20,11 +20,29 @@ export interface Robot {
   readonly vendor: string
   readonly siteId: string
   readonly status: 'ACTIVE' | 'MAINTENANCE' | 'DISABLED'
+  /** Каноническая зона базирования (ТЗ §9: зона едина на всех вкладках). */
+  readonly zoneName: string | null
+  readonly serialNumber: string | null
+  /** Экземпляр системы управления парком, из которого поступают данные. */
+  readonly sourceInstanceId: string | null
 }
 
 // ─── Events (EPIC-08) ──────────────────────────────────────────────────────
 
 export type EventSource = 'RMS' | 'FMS' | 'WMS' | 'ITSM' | 'MANUAL'
+
+/**
+ * Экземпляр источника данных на объекте (ТЗ §9): тип + конкретная система.
+ * Технические события — только RMS/FMS/RCS; WMS — только процессные события
+ * задания; MANUAL — ручное подтверждение человека.
+ */
+export interface SourceInstance {
+  readonly id: string
+  readonly kind: 'FLEET_MANAGEMENT' | 'WAREHOUSE' | 'MANUAL'
+  readonly systemName: string
+  readonly siteId: string
+  readonly vendor: string | null
+}
 export type EventProcessingStatus =
   | 'RECEIVED'
   | 'NORMALIZED'
@@ -40,10 +58,14 @@ export interface OperationalEvent {
   readonly timestamp: string
   readonly receivedAt: string
   readonly source: EventSource
+  /** Конкретный экземпляр источника (HIK RMS · Обухово, WMS · Подольск, Оператор смены …). */
+  readonly sourceInstanceId: string | null
   readonly siteId: string
   readonly robotId: string | null
   readonly rawCode: string
   readonly rawMessage: string
+  /** Русская интерпретация сигнала FleetOps человеческим языком (ТЗ §9). */
+  readonly humanInterpretation: string
   readonly rawPayload: Record<string, unknown>
   readonly normalizedType: string
   readonly incidentTypeCode: string | null
@@ -111,6 +133,12 @@ export interface CauseItem {
   readonly name: string
   readonly categoryCode: string
   readonly responsibilityZone: string
+  /** ТЗ §1: причина объясняет «почему произошло» — обязательные атрибуты доказуемости. */
+  readonly targetObject?: string
+  readonly failureMechanism?: string
+  readonly typicalEvidence?: readonly string[]
+  readonly correctiveAction?: string
+  readonly ownerRole?: string
 }
 
 export type CauseMaturity = 'PRIMARY' | 'REFINED' | 'FINAL'
@@ -133,19 +161,45 @@ export interface CauseVersion {
   readonly evidence: string[]
 }
 
-// ─── Downtime (EPIC-05) ────────────────────────────────────────────────────
+// ─── Downtime (EPIC-05 + TZ v1.6 §13/§31) ──────────────────────────────────
 
-export type DowntimeConfirmationStatus = 'PROPOSED' | 'CONFIRMED' | 'REJECTED'
+export type DowntimeConfirmationStatus =
+  'PROPOSED' | 'PENDING_CONFIRMATION' | 'CONFIRMED' | 'ADJUSTED' | 'REJECTED'
 export type DowntimeIntervalState = 'OPEN' | 'CLOSED'
+
+/** Характер простоя — что именно было недоступно и в каком режиме (ТЗ §31). */
+export type DowntimeKind =
+  | 'UNPLANNED_TECHNICAL'
+  | 'INFRASTRUCTURE'
+  | 'ORGANIZATIONAL'
+  | 'ACCIDENT_SAFETY'
+  | 'PLANNED_MAINTENANCE'
+
+/** Объект недоступности (ТЗ §31). */
+export type DowntimeImpactObject = 'ROBOT' | 'ROBOT_GROUP' | 'ZONE' | 'SITE' | 'PROCESS'
+
+/** Модель экономического влияния (ТЗ §3: резерв/компенсация). */
+export interface DowntimeImpactModel {
+  readonly backupRobotId: string | null
+  readonly compensation: 'NONE' | 'BACKUP_ROBOT' | 'PARTIAL'
+  /** Основание корректировки учёта, когда техническая и учётная недоступность различаются. */
+  readonly adjustmentBasis: string | null
+}
 
 export interface Downtime {
   readonly id: string
   readonly incidentId: string
   readonly siteId: string
   readonly robotId: string | null
+  readonly zoneName: string | null
   readonly downtimeType: 'FULL' | 'PARTIAL'
   readonly confirmationStatus: DowntimeConfirmationStatus
+  readonly confirmedBy: string | null
+  readonly confirmedAt: string | null
   readonly intervalState: DowntimeIntervalState
+  readonly kind: DowntimeKind
+  readonly impactObject: DowntimeImpactObject
+  readonly impact: DowntimeImpactModel
   readonly startedAt: string
   readonly endedAt: string | null
   readonly calendarDurationSeconds: number
@@ -266,7 +320,14 @@ export interface ManualEventForm {
 // ─── ТОиР (ТЗ v1.4 §19) ─────────────────────────────────────────────────
 
 export type MaintenanceType = 'EMERGENCY' | 'PLANNED' | 'CORRECTIVE' | 'DIAGNOSTIC'
-export type MaintenanceStatus = 'PLANNED' | 'ASSIGNED' | 'IN_PROGRESS' | 'WAITING_PARTS' | 'DONE' | 'RESULT_CONFIRMED' | 'CANCELLED'
+export type MaintenanceStatus =
+  | 'PLANNED'
+  | 'ASSIGNED'
+  | 'IN_PROGRESS'
+  | 'WAITING_PARTS'
+  | 'DONE'
+  | 'RESULT_CONFIRMED'
+  | 'CANCELLED'
 
 export interface MaintenanceWork {
   readonly id: string
