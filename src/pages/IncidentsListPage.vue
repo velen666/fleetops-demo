@@ -3,8 +3,18 @@ import { ref, computed } from 'vue'
 import { useDemoData } from '@/composables/useDemoData'
 import { incidentTypeLabel, causeLabel } from '@/data/generator'
 import { INCIDENT_STATUS_RU, INCIDENT_STATUS_CLASS } from '@/data/labels'
+import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
+import { Plus, RotateCcw } from 'lucide-vue-next'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Table,
   TableBody,
@@ -22,8 +32,11 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 
-const { incidents, sites, robots } = useDemoData()
+const { incidents, sites, robots, createManualIncident, nextStep, resetDemo } = useDemoData()
+const auth = useAuthStore()
 const router = useRouter()
 
 const STATUS_RU = INCIDENT_STATUS_RU
@@ -126,10 +139,68 @@ function fmtDur(sec: number): string {
 function goTo(id: string): void {
   router.push({ name: 'incident-details', params: { incidentId: id } })
 }
+
+function stepLabelOf(id: string): string | null {
+  return nextStep(id)?.label ?? null
+}
+
+// ─── Ручное создание инцидента (ТЗ §15) ──────────────────────────────────────
+
+const showCreate = ref(false)
+const createSite = ref('')
+const createZone = ref('')
+const createRobot = ref('__none__')
+const createSeverity = ref<string>('MEDIUM')
+const createObservation = ref('')
+const createWithDowntime = ref(true)
+
+function openCreate(): void {
+  createSite.value = sites.value[0]?.id ?? ''
+  createZone.value = ''
+  createRobot.value = '__none__'
+  createSeverity.value = 'MEDIUM'
+  createObservation.value = ''
+  createWithDowntime.value = true
+  showCreate.value = true
+}
+
+function submitCreate(): void {
+  if (!createSite.value || !createZone.value.trim() || !createObservation.value.trim()) return
+  const created = createManualIncident({
+    siteId: createSite.value,
+    zoneName: createZone.value.trim(),
+    robotId: createRobot.value === '__none__' ? null : createRobot.value,
+    observation: createObservation.value.trim(),
+    severity: createSeverity.value as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
+    actorName: auth.user?.name ?? 'Демо-пользователь',
+    hasDowntime: createWithDowntime.value,
+  })
+  showCreate.value = false
+  router.push({ name: 'incident-details', params: { incidentId: created.id } })
+}
+
+const robotsForSite = computed(() =>
+  robots.value.filter((r) => !createSite.value || r.siteId === createSite.value),
+)
 </script>
 
 <template>
   <div class="space-y-4">
+    <!-- Actions header -->
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <p class="text-sm text-muted-foreground">
+        Рабочая очередь разбора: откройте инцидент и пройдите его от причины до закрытия.
+      </p>
+      <div class="flex gap-2">
+        <Button v-if="auth.can('incidents.create')" size="sm" class="min-h-9" @click="openCreate"
+          ><Plus class="size-4 mr-1" /> Создать инцидент</Button
+        >
+        <Button size="sm" variant="ghost" class="min-h-9" @click="resetDemo"
+          ><RotateCcw class="size-4 mr-1" /> Сбросить демо-данные</Button
+        >
+      </div>
+    </div>
+
     <!-- Quick queues -->
     <div class="flex flex-wrap gap-2">
       <Button
@@ -217,6 +288,7 @@ function goTo(id: string): void {
               <TableHead class="py-3 px-4">Простой</TableHead>
               <TableHead class="py-3 px-4">Потери</TableHead>
               <TableHead class="py-3 px-4">Координатор</TableHead>
+              <TableHead class="py-3 px-4">Следующее действие</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -261,10 +333,100 @@ function goTo(id: string): void {
                 <span v-else class="text-muted-foreground">—</span>
               </TableCell>
               <TableCell class="text-xs py-3 px-4">{{ inc.coordinatorName ?? '—' }}</TableCell>
+              <TableCell class="text-xs py-3 px-4 max-w-[220px]">
+                <span v-if="stepLabelOf(inc.id)" class="text-muted-foreground truncate block">{{
+                  stepLabelOf(inc.id)
+                }}</span>
+                <span v-else class="text-success">закрыт</span>
+              </TableCell>
             </TableRow>
           </TableBody>
         </Table>
       </CardContent>
     </Card>
+
+    <!-- Диалог: ручная регистрация инцидента (ТЗ §15) -->
+    <Dialog :open="showCreate" @update:open="(v) => (showCreate = v)">
+      <DialogContent class="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Ручная регистрация инцидента</DialogTitle>
+          <DialogDescription>
+            Обязательные поля: объект, зона, наблюдение и приоритет. Первичное доказательство —
+            наблюдение оператора; учётный интервал простоя открывается опционально.
+          </DialogDescription>
+        </DialogHeader>
+        <div class="space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div class="space-y-1.5">
+              <Label>Объект *</Label>
+              <Select v-model="createSite" aria-label="Объект">
+                <SelectTrigger class="min-h-10"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-for="s in sites" :key="s.id" :value="s.id">{{ s.name }}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div class="space-y-1.5">
+              <Label for="cr-zone">Зона *</Label>
+              <Input id="cr-zone" v-model="createZone" placeholder="A-3" />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="space-y-1.5">
+              <Label>Робот</Label>
+              <Select v-model="createRobot" aria-label="Робот">
+                <SelectTrigger class="min-h-10"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Не выбран</SelectItem>
+                  <SelectItem v-for="r in robotsForSite" :key="r.id" :value="r.id">{{
+                    r.name
+                  }}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div class="space-y-1.5">
+              <Label>Приоритет *</Label>
+              <Select v-model="createSeverity" aria-label="Приоритет">
+                <SelectTrigger class="min-h-10"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="LOW">Низкий</SelectItem>
+                  <SelectItem value="MEDIUM">Средний</SelectItem>
+                  <SelectItem value="HIGH">Высокий</SelectItem>
+                  <SelectItem value="CRITICAL">Критический</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div class="space-y-1.5">
+            <Label for="cr-obs">Наблюдение *</Label>
+            <Textarea
+              id="cr-obs"
+              v-model="createObservation"
+              rows="3"
+              maxlength="240"
+              placeholder="Что наблюдаем на объекте (факт, не причина)"
+            />
+          </div>
+          <label class="flex items-center gap-2 text-sm">
+            <input
+              v-model="createWithDowntime"
+              type="checkbox"
+              aria-label="Открыть учётный интервал простоя"
+              class="accent-primary"
+            />
+            Открыть учётный интервал простоя
+          </label>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" class="min-h-10" @click="showCreate = false">Отмена</Button>
+          <Button
+            class="min-h-10"
+            :disabled="!createSite || !createZone.trim() || !createObservation.trim()"
+            @click="submitCreate"
+            >Зарегистрировать</Button
+          >
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>

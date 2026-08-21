@@ -34,22 +34,62 @@ export const CAUSE_MATURITY_RU: Record<string, string> = {
 }
 
 export const DOWNTIME_STATUS_RU: Record<string, string> = {
-  PROPOSED: 'Ожидает подтверждения',
+  PROPOSED: 'Предложен',
+  PENDING_CONFIRMATION: 'Ожидает подтверждения',
   CONFIRMED: 'Подтверждён',
+  ADJUSTED: 'Скорректирован',
   REJECTED: 'Отклонён',
 }
 
 export const DOWNTIME_STATUS_CLASS: Record<string, string> = {
   PROPOSED: 'bg-warning/15 text-warning',
+  PENDING_CONFIRMATION: 'bg-warning/15 text-warning',
   CONFIRMED: 'bg-success/15 text-success',
+  ADJUSTED: 'bg-cyan-500/15 text-cyan-500',
   REJECTED: 'bg-destructive/15 text-destructive',
 }
 
 export const INTERVAL_STATUS_RU: Record<string, string> = {
   OPEN: 'Открыт',
-  CLOSED: 'Подтверждён',
+  CLOSED: 'Закрыт',
 }
 
+/** Характер простоя (ТЗ §31): что именно было недоступно и в каком режиме. */
+export const DOWNTIME_KIND_RU: Record<string, string> = {
+  UNPLANNED_TECHNICAL: 'Внеплановый технический',
+  INFRASTRUCTURE: 'Инфраструктурный',
+  ORGANIZATIONAL: 'Организационный / процессный',
+  ACCIDENT_SAFETY: 'Аварийный / безопасность',
+  PLANNED_MAINTENANCE: 'Плановое обслуживание',
+}
+
+export const DOWNTIME_IMPACT_OBJECT_RU: Record<string, string> = {
+  ROBOT: 'Робот',
+  ROBOT_GROUP: 'Группа роботов',
+  ZONE: 'Зона',
+  SITE: 'Объект',
+  PROCESS: 'Процесс',
+}
+
+export const COMPENSATION_RU: Record<string, string> = {
+  NONE: 'Без компенсации',
+  BACKUP_ROBOT: 'Резервный робот',
+  PARTIAL: 'Частичная компенсация',
+}
+
+export const TIMELINE_EVENT_RU: Record<string, string> = {
+  EVENT: 'Событие',
+  CREATED: 'Создание инцидента',
+  ASSIGNED: 'Назначение координатора',
+  OBSERVATION: 'Наблюдение',
+  CAUSE: 'Причина',
+  ACTION_CREATED: 'Сервисное действие',
+  ACTION_COMPLETED: 'Результат действия',
+  RECOVERY: 'Восстановление',
+  DOWNTIME: 'Простой',
+  CLOSED: 'Закрытие',
+  REOPENED: 'Переоткрытие',
+}
 export const EVENT_STATUS_RU: Record<string, string> = {
   RECEIVED: 'Принято',
   NORMALIZED: 'Нормализовано',

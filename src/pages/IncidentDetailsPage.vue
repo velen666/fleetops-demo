@@ -1,19 +1,41 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
 import { useDemoData } from '@/composables/useDemoData'
-import { computed } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import { computed, ref } from 'vue'
 import { Card, CardContent } from '@/components/ui/card'
-import { ArrowLeft, Bot, MapPin, User, Clock } from 'lucide-vue-next'
+import { ArrowLeft, Bot, MapPin, User, Clock, ChevronRight } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { incidentTypeLabel, causeLabel } from '@/data/generator'
-import { CAUSE_CATALOG } from '@/data/generator'
+import { Textarea } from '@/components/ui/textarea'
+import { incidentTypeLabel, causeLabel, CAUSE_CATALOG } from '@/data/generator'
 import {
   INCIDENT_STATUS_RU,
   INCIDENT_STATUS_CLASS,
   SEVERITY_RU,
   CAUSE_MATURITY_RU,
   DOWNTIME_STATUS_RU,
+  DOWNTIME_STATUS_CLASS,
+  DOWNTIME_KIND_RU,
+  COMPENSATION_RU,
+  TIMELINE_EVENT_RU,
   ACTION_STATUS_RU,
   ACTION_RESULT_RU,
   RESPONSIBILITY_ZONE_RU,
@@ -22,6 +44,7 @@ import {
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const {
   incidents,
   events,
@@ -32,6 +55,17 @@ const {
   causeClassifications,
   sites,
   robots,
+  assignCoordinator,
+  addObservation,
+  classifyCause,
+  createServiceAction,
+  completeAction,
+  confirmRecovery,
+  decideDowntime,
+  closeIncident,
+  reopenIncident,
+  readyToClose,
+  nextStep,
 } = useDemoData()
 
 const incidentId = computed(() => String(route.params.incidentId ?? ''))
@@ -55,6 +89,10 @@ const incidentCause = computed(() =>
   causeClassifications.value.find((c) => c.incidentId === incidentId.value),
 )
 
+const step = computed(() => (incident.value ? nextStep(incident.value.id) : null))
+const canClose = computed(() => (incident.value ? readyToClose(incident.value.id) : false))
+const actorName = computed(() => auth.user?.name ?? 'Демо-пользователь')
+
 function siteName(id: string): string {
   return sites.value.find((s) => s.id === id)?.name ?? id
 }
@@ -73,6 +111,159 @@ function fmtDur(sec: number): string {
 function goBack(): void {
   router.push({ name: 'incidents' })
 }
+
+// ─── Рабочий сценарий: диалоги действий (ТЗ §24) ─────────────────────────────
+
+const showAssign = ref(false)
+const showObservation = ref(false)
+const showCause = ref(false)
+const showAction = ref(false)
+const showComplete = ref(false)
+const showRecovery = ref(false)
+const showDowntime = ref(false)
+const showReopen = ref(false)
+
+const obsText = ref('')
+const causeCode = ref('')
+const causeComment = ref('')
+const causeEvidence = ref('')
+const actName = ref('')
+const actDesc = ref('')
+const actExecutor = ref('')
+const actDue = ref('')
+const completeResult = ref<'SUCCESS' | 'PARTIAL_SUCCESS' | 'FAILURE' | 'POSTPONED'>('SUCCESS')
+const completeComment = ref('')
+const completeActionId = ref('')
+const recoveryBasis = ref<'SUCCESSFUL_ACTION' | 'NO_ACTION_EXCEPTION'>('SUCCESSFUL_ACTION')
+const recoveryComment = ref('')
+const dtDecision = ref<'CONFIRM' | 'REJECT' | 'ADJUST'>('CONFIRM')
+const dtAdjustMinutes = ref<number | null>(null)
+const dtComment = ref('')
+const reopenReason = ref('')
+
+const closeError = ref<string | null>(null)
+
+function openCause(maturity: 'PRIMARY' | 'REFINED' | 'FINAL'): void {
+  causeMaturityTarget.value = maturity
+  causeCode.value = incident.value?.causeCode ?? ''
+  causeComment.value = ''
+  causeEvidence.value = 'Осмотр, журнал системы, контрольный маршрут'
+  showCause.value = true
+}
+const causeMaturityTarget = ref<'PRIMARY' | 'REFINED' | 'FINAL'>('PRIMARY')
+
+function submitCause(): void {
+  if (!incident.value || !causeCode.value || !causeComment.value.trim()) return
+  classifyCause(
+    incident.value.id,
+    causeCode.value,
+    causeComment.value.trim(),
+    actorName.value,
+    causeMaturityTarget.value,
+    causeEvidence.value
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  )
+  showCause.value = false
+}
+
+function submitAssign(): void {
+  if (!incident.value) return
+  assignCoordinator(incident.value.id, actorName.value)
+  showAssign.value = false
+}
+
+function submitObservation(): void {
+  if (!incident.value || !obsText.value.trim()) return
+  addObservation(incident.value.id, obsText.value.trim(), actorName.value)
+  obsText.value = ''
+  showObservation.value = false
+}
+
+function submitAction(): void {
+  if (!incident.value || !actName.value.trim() || !actExecutor.value.trim()) return
+  createServiceAction({
+    incidentId: incident.value.id,
+    actionTypeName: actName.value.trim(),
+    description: actDesc.value.trim() || actName.value.trim(),
+    executor: actExecutor.value.trim(),
+    dueAt: actDue.value
+      ? new Date(actDue.value).toISOString()
+      : new Date(Date.now() + 86400000).toISOString(),
+    actorName: actorName.value,
+  })
+  actName.value = ''
+  actDesc.value = ''
+  actExecutor.value = ''
+  actDue.value = ''
+  showAction.value = false
+}
+
+function openComplete(actionId: string): void {
+  completeActionId.value = actionId
+  completeResult.value = 'SUCCESS'
+  completeComment.value = 'Контрольный запуск выполнен без ошибок'
+  showComplete.value = true
+}
+
+function submitComplete(): void {
+  if (!completeComment.value.trim()) return
+  completeAction(
+    completeActionId.value,
+    completeResult.value,
+    completeComment.value.trim(),
+    actorName.value,
+  )
+  showComplete.value = false
+}
+
+function submitRecovery(): void {
+  if (!incident.value) return
+  confirmRecovery(
+    incident.value.id,
+    recoveryBasis.value,
+    recoveryComment.value.trim() || '—',
+    actorName.value,
+  )
+  recoveryComment.value = ''
+  showRecovery.value = false
+}
+
+function submitDowntime(): void {
+  if (!incident.value) return
+  decideDowntime(incident.value.id, dtDecision.value, actorName.value, {
+    adjustedSeconds:
+      dtDecision.value === 'ADJUST' && dtAdjustMinutes.value
+        ? dtAdjustMinutes.value * 60
+        : undefined,
+    comment: dtComment.value.trim() || undefined,
+  })
+  dtComment.value = ''
+  dtAdjustMinutes.value = null
+  showDowntime.value = false
+}
+
+function submitClose(): void {
+  if (!incident.value) return
+  const result = closeIncident(incident.value.id, actorName.value)
+  if (!result.ok) {
+    closeError.value = result.reason ?? 'Условия закрытия не выполнены'
+    return
+  }
+  closeError.value = null
+}
+
+function submitReopen(): void {
+  if (!incident.value || !reopenReason.value.trim()) return
+  reopenIncident(incident.value.id, reopenReason.value.trim(), actorName.value)
+  reopenReason.value = ''
+  showReopen.value = false
+}
+
+const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
+  .filter(([code]) => code !== 'CA-014' || incident.value?.causeCode === 'CA-014')
+  .map(([code, v]) => ({ code, name: `${code} · ${v.name}` }))
 </script>
 
 <template>
@@ -114,6 +305,130 @@ function goBack(): void {
             </p>
           </div>
         </div>
+      </CardContent>
+    </Card>
+
+    <!-- Панель разбора: следующее обязательное действие + доступные действия (ТЗ §24) -->
+    <Card v-if="incident.status !== 'CLOSED'" class="border-primary/40">
+      <CardContent class="p-4 space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div v-if="step" class="flex items-center gap-2 text-sm">
+            <ChevronRight class="size-4 text-primary" />
+            <span class="text-muted-foreground">Следующее действие:</span>
+            <span class="font-medium">{{ step.label }}</span>
+            <span class="text-xs text-muted-foreground">· Ответственный: {{ step.owner }}</span>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <Button
+              v-if="auth.can('incidents.assign')"
+              size="sm"
+              class="min-h-9"
+              @click="showAssign = true"
+            >
+              Назначить координатора
+            </Button>
+            <Button size="sm" variant="outline" class="min-h-9" @click="showObservation = true">
+              Добавить наблюдение
+            </Button>
+            <Button
+              v-if="auth.can('causes.classify')"
+              size="sm"
+              variant="outline"
+              class="min-h-9"
+              @click="openCause('PRIMARY')"
+            >
+              Предварительная причина
+            </Button>
+            <Button
+              v-if="auth.can('causes.refine') && incident.causeMaturity === 'PRIMARY'"
+              size="sm"
+              variant="outline"
+              class="min-h-9"
+              @click="openCause('REFINED')"
+            >
+              Уточнить причину
+            </Button>
+            <Button
+              v-if="auth.can('causes.confirm') && incident.causeMaturity === 'REFINED'"
+              size="sm"
+              variant="outline"
+              class="min-h-9"
+              @click="openCause('FINAL')"
+            >
+              Подтвердить причину
+            </Button>
+            <Button
+              v-if="auth.can('actions.create')"
+              size="sm"
+              variant="outline"
+              class="min-h-9"
+              @click="showAction = true"
+            >
+              Создать действие / ТОиР
+            </Button>
+            <Button
+              v-if="auth.can('actions.recovery.confirm') && !incident.recoveryConfirmed"
+              size="sm"
+              variant="outline"
+              class="min-h-9"
+              @click="showRecovery = true"
+            >
+              Подтвердить восстановление
+            </Button>
+            <Button
+              v-if="
+                auth.can('downtime.confirm') &&
+                incidentDowntime &&
+                !['CONFIRMED', 'ADJUSTED', 'REJECTED'].includes(incidentDowntime.confirmationStatus)
+              "
+              size="sm"
+              variant="outline"
+              class="min-h-9"
+              @click="
+                () => {
+                  dtDecision = 'CONFIRM'
+                  showDowntime = true
+                }
+              "
+            >
+              Решение по простою
+            </Button>
+            <Button
+              v-if="auth.can('incidents.close')"
+              size="sm"
+              class="min-h-9"
+              :variant="step?.kind === 'CLOSE' ? 'default' : 'outline'"
+              :disabled="!canClose"
+              @click="submitClose"
+            >
+              Закрыть инцидент
+            </Button>
+          </div>
+        </div>
+        <p v-if="closeError" class="text-xs text-destructive">
+          Закрытие невозможно: {{ closeError }}
+        </p>
+        <p v-else-if="!canClose && step" class="text-xs text-muted-foreground">
+          Для закрытия нужны: финальная причина, подтверждённое восстановление, решение по простою и
+          завершённое действие.
+        </p>
+      </CardContent>
+    </Card>
+    <Card v-else class="border-success/40">
+      <CardContent class="p-4 flex flex-wrap items-center justify-between gap-3">
+        <p class="text-sm">
+          Инцидент закрыт {{ incident.closedAt ? fmtTime(incident.closedAt) : '' }}. Повтор
+          проблемы?
+        </p>
+        <Button
+          v-if="auth.can('incidents.update')"
+          size="sm"
+          variant="outline"
+          class="min-h-9"
+          @click="showReopen = true"
+        >
+          Переоткрыть
+        </Button>
       </CardContent>
     </Card>
 
@@ -203,8 +518,11 @@ function goBack(): void {
                     {{ fmtTime(evt.timestamp) }}</span
                   >
                 </div>
-                <div class="p-3 text-xs text-muted-foreground leading-relaxed">
-                  {{ evt.rawMessage }}
+                <div class="p-3 space-y-1">
+                  <p class="text-sm">{{ evt.humanInterpretation }}</p>
+                  <p class="text-xs text-muted-foreground leading-relaxed font-mono">
+                    {{ evt.rawMessage }}
+                  </p>
                 </div>
               </div>
             </div>
@@ -218,23 +536,24 @@ function goBack(): void {
           ><CardContent class="p-4 space-y-3 text-sm">
             <div v-if="!incidentDowntime">Простой не зафиксирован.</div>
             <div v-else class="space-y-4">
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 flex-wrap">
                 <span
                   class="text-xs rounded px-2 py-1"
-                  :class="
-                    incidentDowntime.confirmationStatus === 'CONFIRMED'
-                      ? 'bg-success/15 text-success'
-                      : incidentDowntime.confirmationStatus === 'PROPOSED'
-                        ? 'bg-warning/15 text-warning'
-                        : 'bg-destructive/15 text-destructive'
-                  "
+                  :class="DOWNTIME_STATUS_CLASS[incidentDowntime.confirmationStatus]"
                 >
-                  Период простоя: {{ DOWNTIME_STATUS_RU[incidentDowntime.confirmationStatus] }}
+                  {{ DOWNTIME_STATUS_RU[incidentDowntime.confirmationStatus] }}
                 </span>
                 <span
                   v-if="incidentDowntime.intervalState === 'OPEN'"
                   class="text-xs rounded px-2 py-1 bg-muted text-muted-foreground"
                   >Начало подтверждено, окончание не подтверждено</span
+                >
+                <span class="text-xs text-muted-foreground">{{
+                  DOWNTIME_KIND_RU[incidentDowntime.kind]
+                }}</span>
+                <span class="text-xs text-muted-foreground"
+                  >· модель влияния:
+                  {{ COMPENSATION_RU[incidentDowntime.impact.compensation] }}</span
                 >
               </div>
               <div class="grid grid-cols-2 gap-4">
@@ -250,7 +569,20 @@ function goBack(): void {
                 </div>
                 <div>
                   <span class="text-muted-foreground">Длительность:</span>
-                  {{ fmtDur(incidentDowntime.accountableDurationSeconds) }}
+                  <template v-if="incidentDowntime.endedAt">{{
+                    fmtDur(incidentDowntime.accountableDurationSeconds)
+                  }}</template>
+                  <template v-else
+                    >идёт
+                    {{
+                      fmtDur(
+                        Math.max(
+                          0,
+                          Math.round((Date.now() - Date.parse(incidentDowntime.startedAt)) / 1000),
+                        ),
+                      )
+                    }}</template
+                  >
                 </div>
                 <div>
                   <span class="text-muted-foreground">Правило:</span>
@@ -260,11 +592,9 @@ function goBack(): void {
                   <span class="text-muted-foreground">Ставка:</span>
                   {{ incidentDowntime.ratePerHour.toLocaleString('ru-RU') }} ₽/ч
                 </div>
-                <div
-                  v-if="incidentDowntime.confirmationStatus === 'REJECTED'"
-                  class="text-muted-foreground"
-                >
-                  Простой отклонён: процесс компенсирован
+                <div v-if="incidentDowntime.confirmedBy">
+                  <span class="text-muted-foreground">Подтвердил:</span>
+                  {{ incidentDowntime.confirmedBy }}
                 </div>
               </div>
               <div v-if="incidentDowntime.lossRubles > 0" class="border-t pt-3">
@@ -275,6 +605,18 @@ function goBack(): void {
                   = {{ (incidentDowntime.accountableDurationSeconds / 3600).toFixed(2) }} ч ×
                   {{ incidentDowntime.ratePerHour.toLocaleString('ru-RU') }} ₽/ч
                 </p>
+              </div>
+              <div
+                v-else-if="incidentDowntime.confirmationStatus === 'REJECTED'"
+                class="text-muted-foreground"
+              >
+                0 ч, простой отклонён: процесс компенсирован
+              </div>
+              <div
+                v-else-if="incidentDowntime.intervalState === 'OPEN'"
+                class="text-xs text-muted-foreground"
+              >
+                Потери рассчитываются после подтверждения интервала.
               </div>
             </div>
           </CardContent></Card
@@ -308,14 +650,8 @@ function goBack(): void {
                   <div>
                     <p class="font-medium">{{ v.causeName }}</p>
                     <p class="text-xs text-muted-foreground mt-0.5">
-                      {{
-                        v.sequence === 1
-                          ? 'Предварительная'
-                          : v.sequence === 2
-                            ? 'Уточнённая'
-                            : 'Подтверждённая'
-                      }}
-                      · {{ RESPONSIBILITY_ZONE_RU[v.responsibilityZone] ?? v.responsibilityZone }}
+                      {{ CAUSE_MATURITY_RU[v.maturity] }} ·
+                      {{ RESPONSIBILITY_ZONE_RU[v.responsibilityZone] ?? v.responsibilityZone }}
                     </p>
                   </div>
                   <span class="text-xs text-muted-foreground"
@@ -355,7 +691,7 @@ function goBack(): void {
               >
                 <div class="flex justify-between mb-1 items-start">
                   <span class="font-medium">{{ action.actionTypeName }}</span>
-                  <div class="flex gap-1.5">
+                  <div class="flex gap-1.5 items-center">
                     <span
                       v-if="action.result"
                       class="text-xs rounded px-1.5 py-0.5 bg-success/15 text-success"
@@ -364,6 +700,15 @@ function goBack(): void {
                     <span v-else class="text-xs rounded px-1.5 py-0.5 bg-primary/15 text-primary">{{
                       ACTION_STATUS_RU[action.status] ?? action.status
                     }}</span>
+                    <Button
+                      v-if="action.status === 'CREATED' || action.status === 'IN_PROGRESS'"
+                      size="sm"
+                      variant="ghost"
+                      class="min-h-7 h-7 px-2"
+                      :disabled="!auth.can('actions.complete')"
+                      @click="openComplete(action.id)"
+                      >Зафиксировать результат</Button
+                    >
                   </div>
                 </div>
                 <p class="text-xs text-muted-foreground">
@@ -395,7 +740,12 @@ function goBack(): void {
                   :class="entry.isAutomatic ? 'bg-primary' : 'bg-success'"
                 />
                 <div class="flex-1 min-w-0">
-                  <p class="text-sm">{{ entry.summary }}</p>
+                  <p class="text-sm">
+                    <span class="text-xs text-muted-foreground mr-2">{{
+                      TIMELINE_EVENT_RU[entry.eventType] ?? entry.eventType
+                    }}</span
+                    >{{ entry.summary }}
+                  </p>
                   <p class="text-xs text-muted-foreground">
                     {{ fmtTime(entry.timestamp) }} · {{ entry.actorName
                     }}<span v-if="entry.isAutomatic"> (авто)</span>
@@ -407,6 +757,309 @@ function goBack(): void {
         >
       </TabsContent>
     </Tabs>
+
+    <!-- Диалог: назначить координатора -->
+    <Dialog :open="showAssign" @update:open="(v) => (showAssign = v)">
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Назначить координатора</DialogTitle>
+          <DialogDescription>
+            Вы принимаете инцидент в работу от имени «{{ actorName }}» (роль:
+            {{ auth.activeRoleCode ?? '—' }}).
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" class="min-h-10" @click="showAssign = false">Отмена</Button>
+          <Button class="min-h-10" @click="submitAssign">Принять в работу</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Диалог: наблюдение -->
+    <Dialog :open="showObservation" @update:open="(v) => (showObservation = v)">
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Добавить наблюдение</DialogTitle>
+          <DialogDescription>
+            Человеческое наблюдение или доказательство по факту — попадёт в единую историю.
+          </DialogDescription>
+        </DialogHeader>
+        <div class="space-y-2">
+          <Textarea
+            v-model="obsText"
+            rows="3"
+            aria-label="Текст наблюдения"
+            placeholder="Что установлено при осмотре / проверке"
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" class="min-h-10" @click="showObservation = false"
+            >Отмена</Button
+          >
+          <Button class="min-h-10" :disabled="!obsText.trim()" @click="submitObservation"
+            >Записать</Button
+          >
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Диалог: причина (primary/refined/final) -->
+    <Dialog :open="showCause" @update:open="(v) => (showCause = v)">
+      <DialogContent class="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            {{
+              causeMaturityTarget === 'PRIMARY'
+                ? 'Предварительная причина'
+                : causeMaturityTarget === 'REFINED'
+                  ? 'Уточнить причину'
+                  : 'Подтвердить финальную причину'
+            }}
+          </DialogTitle>
+          <DialogDescription>
+            Причина отвечает на вопрос «почему произошло». Комментарий — что конкретно установлено в
+            этом случае (минимум 20 символов).
+          </DialogDescription>
+        </DialogHeader>
+        <div class="space-y-3">
+          <div class="space-y-1.5">
+            <Label>Причина из классификатора *</Label>
+            <Select v-model="causeCode" aria-label="Причина">
+              <SelectTrigger class="min-h-10">
+                <SelectValue placeholder="Выберите причину" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="c in CAUSE_OPTIONS" :key="c.code" :value="c.code">
+                  {{ c.name }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-1.5">
+            <Label for="cause-comment">Комментарий человека *</Label>
+            <Textarea
+              id="cause-comment"
+              v-model="causeComment"
+              rows="3"
+              maxlength="500"
+              placeholder="Например: на оптическом окне лидара обнаружен слой пыли; после очистки качество сканирования восстановилось"
+            />
+          </div>
+          <div class="space-y-1.5">
+            <Label for="cause-evidence">Доказательства (через запятую)</Label>
+            <Input id="cause-evidence" v-model="causeEvidence" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" class="min-h-10" @click="showCause = false">Отмена</Button>
+          <Button
+            class="min-h-10"
+            :disabled="!causeCode || causeComment.trim().length < 20"
+            @click="submitCause"
+            >Записать</Button
+          >
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Диалог: создать действие / работу ТОиР -->
+    <Dialog :open="showAction" @update:open="(v) => (showAction = v)">
+      <DialogContent class="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Создать сервисное действие</DialogTitle>
+          <DialogDescription>
+            Действие появится в карточке и в реестре ТОиР как аварийная работа, связанная с
+            инцидентом.
+          </DialogDescription>
+        </DialogHeader>
+        <div class="space-y-3">
+          <div class="space-y-1.5">
+            <Label for="act-name">Вид работы *</Label>
+            <Input
+              id="act-name"
+              v-model="actName"
+              placeholder="Например: Диагностика правого привода"
+            />
+          </div>
+          <div class="space-y-1.5">
+            <Label for="act-desc">Описание</Label>
+            <Textarea id="act-desc" v-model="actDesc" rows="2" />
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="space-y-1.5">
+              <Label for="act-exec">Исполнитель *</Label>
+              <Input id="act-exec" v-model="actExecutor" placeholder="Иван Петров" />
+            </div>
+            <div class="space-y-1.5">
+              <Label for="act-due">Срок</Label>
+              <Input id="act-due" v-model="actDue" type="datetime-local" />
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" class="min-h-10" @click="showAction = false">Отмена</Button>
+          <Button
+            class="min-h-10"
+            :disabled="!actName.trim() || !actExecutor.trim()"
+            @click="submitAction"
+            >Создать</Button
+          >
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Диалог: результат действия -->
+    <Dialog :open="showComplete" @update:open="(v) => (showComplete = v)">
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Результат сервисного действия</DialogTitle>
+          <DialogDescription>
+            Контрольный запуск обязателен при успешном результате.
+          </DialogDescription>
+        </DialogHeader>
+        <div class="space-y-3">
+          <div class="space-y-1.5">
+            <Label>Результат *</Label>
+            <Select v-model="completeResult" aria-label="Результат">
+              <SelectTrigger class="min-h-10"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="SUCCESS">Выполнено — результат подтверждён</SelectItem>
+                <SelectItem value="PARTIAL_SUCCESS">Выполнено частично</SelectItem>
+                <SelectItem value="FAILURE">Без результата</SelectItem>
+                <SelectItem value="POSTPONED">Отложено</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-1.5">
+            <Label for="cmp-comment">Комментарий *</Label>
+            <Textarea id="cmp-comment" v-model="completeComment" rows="2" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" class="min-h-10" @click="showComplete = false">Отмена</Button>
+          <Button class="min-h-10" :disabled="!completeComment.trim()" @click="submitComplete"
+            >Зафиксировать</Button
+          >
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Диалог: восстановление -->
+    <Dialog :open="showRecovery" @update:open="(v) => (showRecovery = v)">
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Подтверждение восстановления</DialogTitle>
+          <DialogDescription>
+            Открытый интервал простоя закроется этим моментом (авто).
+          </DialogDescription>
+        </DialogHeader>
+        <div class="space-y-3">
+          <div class="space-y-1.5">
+            <Label>Основание *</Label>
+            <Select v-model="recoveryBasis" aria-label="Основание восстановления">
+              <SelectTrigger class="min-h-10"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="SUCCESSFUL_ACTION">Успешное сервисное действие</SelectItem>
+                <SelectItem value="NO_ACTION_EXCEPTION">Без действия (исключение)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-1.5">
+            <Label for="rec-comment">Комментарий</Label>
+            <Textarea
+              id="rec-comment"
+              v-model="recoveryComment"
+              rows="2"
+              placeholder="Контрольный маршрут с грузом по зоне выполнен без ошибок"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" class="min-h-10" @click="showRecovery = false">Отмена</Button>
+          <Button class="min-h-10" @click="submitRecovery">Подтвердить восстановление</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Диалог: решение по простою -->
+    <Dialog :open="showDowntime" @update:open="(v) => (showDowntime = v)">
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Решение по интервалу простоя</DialogTitle>
+          <DialogDescription>
+            Подтверждение открытого интервала фиксирует окончание текущим моментом; корректировка
+            меняет учётную длительность и пересчитывает потери.
+          </DialogDescription>
+        </DialogHeader>
+        <div class="space-y-3">
+          <div class="space-y-1.5">
+            <Label>Решение *</Label>
+            <Select v-model="dtDecision" aria-label="Решение по простою">
+              <SelectTrigger class="min-h-10"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="CONFIRM">Подтвердить</SelectItem>
+                <SelectItem value="ADJUST">Скорректировать длительность</SelectItem>
+                <SelectItem value="REJECT">Отклонить (процесс компенсирован)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div v-if="dtDecision === 'ADJUST'" class="space-y-1.5">
+            <Label for="dt-min">Учётная длительность, минут *</Label>
+            <Input
+              id="dt-min"
+              v-model.number="dtAdjustMinutes as never"
+              type="number"
+              min="1"
+              placeholder="например 90"
+            />
+          </div>
+          <div class="space-y-1.5">
+            <Label for="dt-comment">Основание</Label>
+            <Textarea
+              id="dt-comment"
+              v-model="dtComment"
+              rows="2"
+              placeholder="Например: резервный робот введён через 40 минут"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" class="min-h-10" @click="showDowntime = false">Отмена</Button>
+          <Button
+            class="min-h-10"
+            :disabled="dtDecision === 'ADJUST' && !dtAdjustMinutes"
+            @click="submitDowntime"
+            >Принять решение</Button
+          >
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Диалог: переоткрытие -->
+    <Dialog :open="showReopen" @update:open="(v) => (showReopen = v)">
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Переоткрыть инцидент</DialogTitle>
+          <DialogDescription>
+            Повтор проблемы после закрытия — инцидент вернётся в работу, запись появится в истории.
+          </DialogDescription>
+        </DialogHeader>
+        <div class="space-y-2">
+          <Textarea
+            v-model="reopenReason"
+            rows="2"
+            aria-label="Причина переоткрытия"
+            placeholder="Причина переоткрытия"
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" class="min-h-10" @click="showReopen = false">Отмена</Button>
+          <Button class="min-h-10" :disabled="!reopenReason.trim()" @click="submitReopen"
+            >Переоткрыть</Button
+          >
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
   <div v-else class="text-center py-8 text-muted-foreground">Инцидент не найден</div>
 </template>
