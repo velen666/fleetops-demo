@@ -1,0 +1,35 @@
+import { expect, test } from '@playwright/test'
+
+test('C: breakdown dialog fullscreen-width with pinned header and total', async ({ page }) => {
+  await page.goto('http://localhost:5180/login')
+  await page.locator('button', { hasText: 'Администратор' }).first().click()
+  await page.waitForURL('http://localhost:5180/', { timeout: 10000 })
+  await page.goto('http://localhost:5180/analytics')
+  await page.waitForTimeout(1200)
+  await page.locator('.kpi-clickable').first().click()
+  const dlg = page.locator('[role="dialog"]')
+  await expect(dlg).toBeVisible()
+  const box = await dlg.boundingBox()
+  expect(box?.width ?? 0).toBeGreaterThan(800)
+  await expect(dlg.getByText('Показано', { exact: false })).toBeVisible()
+  await expect(dlg.getByText('Итого:', { exact: false })).toBeVisible()
+  await page.screenshot({ path: 'e2e-screens/demo-c-breakdown.png' })
+})
+
+test('C: incident filters persist in URL and survive reload', async ({ page }) => {
+  await page.goto('http://localhost:5180/login')
+  await page.locator('button', { hasText: 'Администратор' }).first().click()
+  await page.waitForURL('http://localhost:5180/', { timeout: 10000 })
+  await page.goto('http://localhost:5180/incidents')
+  await page.waitForTimeout(800)
+  await page.locator('button[role="combobox"]').first().click()
+  await page.getByRole('option', { name: 'ФФЦ Домодедово' }).click()
+  await page.waitForTimeout(500)
+  await expect(page).toHaveURL(/site=site-dom/)
+  await page.reload()
+  await page.waitForTimeout(1000)
+  // фильтр сохранился: комбо показывает объект, строки — только Домодедово
+  const rows = await page.locator('tbody tr').allTextContents()
+  expect(rows.length).toBeGreaterThan(0)
+  expect(rows.every((r) => r.includes('Домодедово'))).toBe(true)
+})

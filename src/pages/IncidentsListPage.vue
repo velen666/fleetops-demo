@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useDemoData } from '@/composables/useDemoData'
 import { incidentTypeLabel, causeLabel } from '@/data/generator'
 import { INCIDENT_STATUS_RU, INCIDENT_STATUS_CLASS } from '@/data/labels'
 import { useAuthStore } from '@/stores/auth'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { Plus, RotateCcw } from 'lucide-vue-next'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -37,13 +37,35 @@ import { Textarea } from '@/components/ui/textarea'
 
 const { incidents, sites, robots, createManualIncident, nextStep, resetDemo } = useDemoData()
 const auth = useAuthStore()
-const router = useRouter()
 
 const STATUS_RU = INCIDENT_STATUS_RU
-const activeQueue = ref<string>('all')
-const filterSite = ref('all')
-const filterStatus = ref('all')
-const searchText = ref('')
+// TZ v1.6 §11: фильтры в URL — прямая ссылка и возврат сохраняют выборку.
+const route = useRoute()
+const router = useRouter()
+
+function strParam(v: unknown, fallback: string): string {
+  return typeof v === 'string' && v.length > 0 ? v : fallback
+}
+
+const activeQueue = ref<string>(strParam(route.query.queue, 'all'))
+const filterSite = ref(strParam(route.query.site, 'all'))
+const filterStatus = ref(strParam(route.query.status, 'all'))
+const searchText = ref(strParam(route.query.q, ''))
+
+watch(
+  [activeQueue, filterSite, filterStatus, searchText],
+  ([queue, site, status, q]) => {
+    void router.replace({
+      query: {
+        ...(queue !== 'all' ? { queue } : {}),
+        ...(site !== 'all' ? { site } : {}),
+        ...(status !== 'all' ? { status } : {}),
+        ...(q ? { q } : {}),
+      },
+    })
+  },
+  { deep: false },
+)
 
 interface Queue {
   key: string

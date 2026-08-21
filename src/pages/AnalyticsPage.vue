@@ -122,7 +122,9 @@ function openBreakdown(title: string): void {
   breakdownTitle.value = title
   showBreakdown.value = true
 }
-const lossIncidents = computed(() => incidents.value.filter((i) => i.lossRubles > 0))
+const lossIncidents = computed(() =>
+  incidents.value.filter((i) => i.lossRubles > 0).sort((a, b) => b.lossRubles - a.lossRubles),
+)
 </script>
 
 <template>
@@ -348,47 +350,71 @@ const lossIncidents = computed(() => incidents.value.filter((i) => i.lossRubles 
 
     <!-- Drill-down -->
     <Dialog v-model:open="showBreakdown">
-      <DialogContent class="max-w-3xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent
+        class="w-[90%] max-w-[1200px] sm:max-w-[1200px] max-h-[85vh] flex flex-col gap-0 sm:p-0"
+      >
+        <DialogHeader class="p-6 pb-3 shrink-0">
           <DialogTitle>{{ breakdownTitle }}</DialogTitle>
-          <DialogDescription>Детализация: каждая запись из расчёта</DialogDescription>
+          <DialogDescription>
+            Все инциденты, входящие в текущую выборку; итог равен агрегату. Строки отсортированы по
+            сумме потерь.
+          </DialogDescription>
         </DialogHeader>
-        <Table>
-          <TableHeader
-            ><TableRow>
-              <TableHead>Инцидент</TableHead><TableHead>Тип</TableHead
-              ><TableHead>Причина</TableHead> <TableHead>Часов</TableHead
-              ><TableHead>Сумма</TableHead>
-            </TableRow></TableHeader
-          >
-          <TableBody>
-            <TableRow
-              v-for="inc in lossIncidents"
-              :key="inc.id"
-              class="row-interactive cursor-pointer"
-              @click="
-                () => {
-                  router.push({ name: 'incident-details', params: { incidentId: inc.id } })
-                  showBreakdown = false
-                }
-              "
+        <div class="overflow-y-auto px-6 flex-1">
+          <p class="text-xs text-muted-foreground mb-2">
+            Показано {{ lossIncidents.length }} из {{ incidents.length }} инцидентов (с
+            подтверждёнными потерями)
+          </p>
+          <Table>
+            <TableHeader
+              ><TableRow>
+                <TableHead>Инцидент</TableHead><TableHead>Тип</TableHead
+                ><TableHead>Причина</TableHead> <TableHead>Часов</TableHead
+                ><TableHead>Сумма</TableHead>
+              </TableRow></TableHeader
             >
-              <TableCell class="text-xs py-2 px-4 text-primary">{{ inc.incidentNumber }}</TableCell>
-              <TableCell class="text-xs py-2 px-4">{{
-                incidentTypeLabel(inc.incidentTypeCode).split(' · ')[1]
-              }}</TableCell>
-              <TableCell class="text-xs py-2 px-4">{{
-                causeLabel(inc.causeCode).split(' · ')[1] ?? '—'
-              }}</TableCell>
-              <TableCell class="text-xs tabular-nums py-2 px-4">{{
-                (inc.downtimeSeconds / 3600).toFixed(1)
-              }}</TableCell>
-              <TableCell class="text-xs font-medium tabular-nums py-2 px-4"
-                >{{ inc.lossRubles.toLocaleString('ru-RU') }} ₽</TableCell
+            <TableBody>
+              <TableRow
+                v-for="inc in lossIncidents"
+                :key="inc.id"
+                class="row-interactive cursor-pointer"
+                @click="
+                  () => {
+                    router.push({ name: 'incident-details', params: { incidentId: inc.id } })
+                    showBreakdown = false
+                  }
+                "
               >
-            </TableRow>
-          </TableBody>
-        </Table>
+                <TableCell class="text-xs py-2 px-4 text-primary">{{
+                  inc.incidentNumber
+                }}</TableCell>
+                <TableCell class="text-xs py-2 px-4">{{
+                  incidentTypeLabel(inc.incidentTypeCode).split(' · ')[1]
+                }}</TableCell>
+                <TableCell class="text-xs py-2 px-4">{{
+                  causeLabel(inc.causeCode).split(' · ')[1] ?? '—'
+                }}</TableCell>
+                <TableCell class="text-xs tabular-nums py-2 px-4">{{
+                  (inc.downtimeSeconds / 3600).toFixed(1)
+                }}</TableCell>
+                <TableCell class="text-xs font-medium tabular-nums py-2 px-4"
+                  >{{ inc.lossRubles.toLocaleString('ru-RU') }} ₽</TableCell
+                >
+              </TableRow>
+            </TableBody>
+          </Table>
+        </div>
+        <div class="p-4 border-t border-border shrink-0">
+          <p class="text-sm">
+            Итого:
+            <strong class="tabular-nums">{{ liveLoss.toLocaleString('ru-RU') }} ₽</strong>
+            <span class="text-xs text-muted-foreground ml-2"
+              >{{ lossIncidents.length }} инцидентов ·
+              {{ (lossIncidents.reduce((s, i) => s + i.downtimeSeconds, 0) / 3600).toFixed(1) }}
+              ч</span
+            >
+          </p>
+        </div>
       </DialogContent>
     </Dialog>
   </div>
