@@ -1,11 +1,17 @@
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useDemoData } from '@/composables/useDemoData'
-import { useAuthStore } from '@/stores/auth'
+import type { Incident } from '@/types/domain'
+import { causeLabel } from '@/data/generator'
+import { CAUSE_CATALOG } from '@/data/generator'
+import { RESPONSIBILITY_ZONE_RU } from '@/data/labels'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
   TableBody,
   TableCell,
+  TableEmpty,
   TableHead,
   TableHeader,
   TableRow,
@@ -18,39 +24,185 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { causeLabel, incidentTypeLabel } from '@/data/generator'
-import { CAUSE_CATALOG } from '@/data/generator'
-import { RESPONSIBILITY_ZONE_RU } from '@/data/labels'
-import { useRouter } from 'vue-router'
+import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
-const { analytics, costRates, costSnapshots, stats, incidents, sites, robots } = useDemoData()
-const auth = useAuthStore()
+const { incidents, downtimes, sites, robots } = useDemoData()
+const route = useRoute()
 const router = useRouter()
 
-// Live offset (синхронизирован с дашбордом)
-const liveOffset = ref({ lossRubles: 0 })
-let liveTimer: ReturnType<typeof setInterval> | null = null
-onMounted(() => {
-  liveTimer = setInterval(() => {
-    liveOffset.value.lossRubles += Math.round(((Math.random() * 120 + 30) / 3600) * 55000)
-  }, 12000)
-})
-onUnmounted(() => {
-  if (liveTimer) clearInterval(liveTimer)
-})
-const liveLoss = computed(() => stats.value.totalLoss + liveOffset.value.lossRubles)
+// ─── 32.1 Общие фильтры раздела (один набор для всех блоков; в URL) ─────────
 
-// ── Графики ──
+function strParam(v: unknown, fallback: string): string {
+  return typeof v === 'string' && v.length > 0 ? v : fallback
+}
 
-// 1. Причины: horizontal bar (потери, ₽)
-const causeLabels = computed(() =>
-  analytics.value.paretoCauses.map((p) => causeLabel(p.code).split(' · ')[1] ?? p.name),
+const filterSite = ref(strParam(route.query.site, 'all'))
+const filterCause = ref(strParam(route.query.cause, 'all'))
+const filterZone = ref(strParam(route.query.zone, 'all'))
+const filterRobot = ref(strParam(route.query.robot, 'all'))
+// стартовое представление (32.1): объект / роботопарк / экономика
+const view = ref<'site' | 'fleet' | 'econ'>(strParam(route.query.view, 'site') as 'site')
+
+watch([filterSite, filterCause, filterZone, filterRobot, view], ([site, cause, zone, robot, v]) => {
+  void router.replace({
+    query: {
+      ...(site !== 'all' ? { site } : {}),
+      ...(cause !== 'all' ? { cause } : {}),
+      ...(zone !== 'all' ? { zone } : {}),
+      ...(robot !== 'all' ? { robot } : {}),
+      view: v,
+    },
+  })
+})
+
+const causeOptions = computed(() => {
+  const codes = new Set(
+    incidents.value.map((i) => i.causeCode).filter((c): c is string => Boolean(c)),
+  )
+  return [...codes].sort()
+})
+
+const robotOptions = computed(() =>
+  robots.value.filter((r) => filterSite.value === 'all' || r.siteId === filterSite.value),
 )
-const causeLossData = computed(() => analytics.value.paretoCauses.map((p) => p.loss))
 
-// 2. Объекты: stacked bar по зонам ответственности
-const siteLabels = computed(() => analytics.value.lossBySite.map((s) => s.siteName))
+/** Выборка инцидентов по общим фильтрам. */
+const selection = computed<Incident[]>(() =>
+  incidents.value.filter((i) => {
+    if (filterSite.value !== 'all' && i.siteId !== filterSite.value) return false
+    if (filterCause.value !== 'all' && i.causeCode !== filterCause.value) return false
+    if (filterZone.value !== 'all' && i.zoneName !== filterZone.value) return false
+    if (filterRobot.value !== 'all' && i.robotId !== filterRobot.value) return false
+    return true
+  }),
+)
+
+/** Подтверждённые интервалы, принадлежащие выборке. */
+const selectionDowntimes = computed(() => {
+  const ids = new Set(selection.value.map((i) => i.id))
+  return downtimes.value.filter(
+    (d) =>
+      ids.has(d.incidentId) &&
+      (d.confirmationStatus === 'CONFIRMED' || d.confirmationStatus === 'ADJUSTED'),
+  )
+})
+
+function siteName(id: string): string {
+  return sites.value.find((s) => s.id === id)?.name ?? id
+}
+function robotName(id: string | null): string {
+  if (!id) return '—'
+  return robots.value.find((r) => r.id === id)?.name ?? id
+}
+
+// ─── 32.2 Верхняя сводка (с формулами; клик → выборка) ──────────────────────
+
+const kpis = computed(() => {
+  const sel = selection.value
+  const dts = selectionDowntimes.value
+  const downtimeSec = dts.reduce((s, d) => s + d.accountableDurationSeconds, 0)
+  const loss = dts.reduce((s, d) => s + d.lossRubles, 0)
+  const active = sel.filter((i) => i.status !== 'CLOSED').length
+  const withFinal = sel.filter((i) => i.causeMaturity === 'FINAL').length
+  const unfinished = sel.filter((i) => i.status !== 'CLOSED' && i.causeMaturity !== 'FINAL').length
+  // доступность: 1 − простои / плановый фонд робот-часов (24×7 × парк × 30 дней)
+  const fleet =
+    filterSite.value !== 'all'
+      ? robots.value.filter((r) => r.siteId === filterSite.value).length
+      : robots.value.length
+  const plannedFleetHours = fleet * 24 * 30
+  const availability =
+    plannedFleetHours > 0 ? 100 - (downtimeSec / 3600 / plannedFleetHours) * 100 : 100
+  return {
+    incidentsCount: sel.length,
+    confirmedDowntimeHours: downtimeSec / 3600,
+    confirmedLoss: loss,
+    activeIncidents: active,
+    finalCauseShare: sel.length > 0 ? (withFinal / sel.length) * 100 : 0,
+    unfinishedReviews: unfinished,
+    availability,
+    fleet,
+    plannedFleetHours,
+    intervals: dts.length,
+  }
+})
+
+// ─── 32.3 Потери по причинам (тултип из одной записи; детализация по клику) ─
+
+interface CauseRow {
+  code: string
+  name: string
+  count: number
+  hours: number
+  loss: number
+  share: number
+  robots: number
+  sitesCount: number
+  zonesCount: number
+}
+
+const causeRows = computed<CauseRow[]>(() => {
+  const dts = selectionDowntimes.value
+  const total = dts.reduce((s, d) => s + d.lossRubles, 0)
+  const byCause = new Map<string, CauseRow>()
+  for (const d of dts) {
+    const inc = selection.value.find((i) => i.id === d.incidentId)
+    const code = inc?.causeCode ?? 'CA-060'
+    const row = byCause.get(code) ?? {
+      code,
+      name: causeLabel(code),
+      count: 0,
+      hours: 0,
+      loss: 0,
+      share: 0,
+      robots: 0,
+      sitesCount: 0,
+      zonesCount: 0,
+    }
+    row.count++
+    row.hours += d.accountableDurationSeconds / 3600
+    row.loss += d.lossRubles
+    byCause.set(code, row)
+  }
+  const rows = [...byCause.values()].sort((a, b) => b.loss - a.loss)
+  for (const r of rows) r.share = total > 0 ? (r.loss / total) * 100 : 0
+  return rows
+})
+
+const causeChartLabels = computed(() =>
+  causeRows.value.map((r) => r.name.split(' · ')[1] ?? r.name),
+)
+const causeChartData = computed(() => causeRows.value.map((r) => r.loss))
+
+// ─── 32.4 Разделение: потери по объектам / по зонам ответственности ──────────
+
+const siteLossRows = computed(() =>
+  sites.value
+    .map((s) => {
+      const dts = selectionDowntimes.value.filter((d) => d.siteId === s.id)
+      const loss = dts.reduce((s2, d) => s2 + d.lossRubles, 0)
+      const zones = new Set(
+        selection.value.filter((i) => i.siteId === s.id && i.zoneName).map((i) => i.zoneName),
+      )
+      return {
+        siteId: s.id,
+        name: s.name,
+        loss,
+        hours: dts.reduce((s2, d) => s2 + d.accountableDurationSeconds, 0) / 3600,
+        zones: zones.size,
+      }
+    })
+    .filter((r) => r.loss > 0)
+    .sort((a, b) => b.loss - a.loss),
+)
+
 const zoneColors: Record<string, string> = {
   OPERATIONS: '#ff6b6b',
   IT: '#00a0e9',
@@ -58,362 +210,692 @@ const zoneColors: Record<string, string> = {
   INFRASTRUCTURE: '#10b981',
   UNKNOWN: '#64748b',
 }
-const siteZoneDatasets = computed(() => {
-  const zones = new Set<string>()
-  for (const inc of incidents.value) {
-    if (inc.lossRubles > 0 && inc.causeCode)
-      zones.add(CAUSE_CATALOG[inc.causeCode]?.zone ?? 'UNKNOWN')
+
+const zoneLossRows = computed(() => {
+  const byZone = new Map<string, { zone: string; loss: number; causes: Set<string> }>()
+  for (const d of selectionDowntimes.value) {
+    const inc = selection.value.find((i) => i.id === d.incidentId)
+    const zone = inc?.causeCode ? (CAUSE_CATALOG[inc.causeCode]?.zone ?? 'UNKNOWN') : 'UNKNOWN'
+    const row = byZone.get(zone) ?? { zone, loss: 0, causes: new Set<string>() }
+    row.loss += d.lossRubles
+    if (inc?.causeCode) row.causes.add(inc.causeCode)
+    byZone.set(zone, row)
   }
-  return [...zones].map((zone) => ({
+  return [...byZone.values()].sort((a, b) => b.loss - a.loss)
+})
+
+const siteChartLabels = computed(() => siteLossRows.value.map((r) => r.name))
+const siteZoneDatasets = computed(() => {
+  const zones = [...new Set(zoneLossRows.value.map((r) => r.zone))]
+  return zones.map((zone) => ({
     label: RESPONSIBILITY_ZONE_RU[zone] ?? zone,
     color: zoneColors[zone] ?? '#64748b',
-    data: sites.value.map((site) =>
-      incidents.value
-        .filter(
-          (i) =>
-            i.siteId === site.id &&
-            i.lossRubles > 0 &&
-            i.causeCode &&
-            (CAUSE_CATALOG[i.causeCode]?.zone ?? 'UNKNOWN') === zone,
-        )
-        .reduce((s, i) => s + i.lossRubles, 0),
+    data: siteLossRows.value.map((site) =>
+      selectionDowntimes.value
+        .filter((d) => {
+          const inc = selection.value.find((i) => i.id === d.incidentId)
+          return (
+            d.siteId === site.siteId &&
+            inc?.causeCode &&
+            (CAUSE_CATALOG[inc.causeCode]?.zone ?? 'UNKNOWN') === zone
+          )
+        })
+        .reduce((s, d) => s + d.lossRubles, 0),
     ),
   }))
 })
 
-// 3. Повторяемость: vertical bar (количество)
-const repeatLabels = computed(() =>
-  analytics.value.repeatProblems.map((p) => causeLabel(p.code).split(' · ')[1] ?? p.name),
-)
-const repeatData = computed(() => analytics.value.repeatProblems.map((p) => p.count))
+// ─── 32.5 Один блок «Повторяющиеся проблемы» ────────────────────────────────
 
-// 4. Реакция/восстановление: grouped bar (минуты)
-const rtLabels = computed(() => {
-  const withReaction = incidents.value.filter((i) => i.reactionSlaSeconds !== null)
-  const withRecovery = incidents.value.filter((i) => i.recoverySlaSeconds !== null)
-  return [`Реакция (n=${withReaction.length})`, `Восстановление (n=${withRecovery.length})`]
+interface RepeatRow {
+  code: string
+  name: string
+  count: number
+  robotsCount: number
+  sitesCount: number
+  zonesCount: number
+  sameRobotRepeat: boolean
+  sameZoneRepeat: boolean
+  hours: number
+  loss: number
+}
+
+const repeatRows = computed<RepeatRow[]>(() => {
+  const byCause = new Map<string, { incs: Incident[] }>()
+  for (const inc of selection.value) {
+    const code = inc.causeCode
+    if (!code) continue
+    const row = byCause.get(code) ?? { incs: [] }
+    row.incs.push(inc)
+    byCause.set(code, row)
+  }
+  const rows: RepeatRow[] = []
+  for (const [code, { incs }] of byCause) {
+    if (incs.length < 2) continue
+    const robotSet = new Set(incs.map((i) => i.robotId))
+    const siteSet = new Set(incs.map((i) => i.siteId))
+    const zoneSet = new Set(incs.map((i) => i.zoneName))
+    const dts = selectionDowntimes.value.filter((d) => incs.some((i) => i.id === d.incidentId))
+    rows.push({
+      code,
+      name: causeLabel(code),
+      count: incs.length,
+      robotsCount: robotSet.size,
+      sitesCount: siteSet.size,
+      zonesCount: zoneSet.size,
+      sameRobotRepeat: [...robotSet].some((r) => incs.filter((i) => i.robotId === r).length >= 2),
+      sameZoneRepeat: [...zoneSet].some((z) => incs.filter((i) => i.zoneName === z).length >= 2),
+      hours: dts.reduce((s, d) => s + d.accountableDurationSeconds, 0) / 3600,
+      loss: dts.reduce((s, d) => s + d.lossRubles, 0),
+    })
+  }
+  return rows.sort((a, b) => b.count - a.count || b.loss - a.loss)
 })
-const rtDatasets = computed(() => {
-  const reactions = incidents.value
+
+const repeatChartLabels = computed(() =>
+  repeatRows.value.slice(0, 8).map((r) => r.name.split(' · ')[1] ?? r.name),
+)
+const repeatChartData = computed(() => repeatRows.value.slice(0, 8).map((r) => r.count))
+
+// ─── 32.6 Время реакции и восстановления (без слова SLA) ────────────────────
+
+const rtStats = computed(() => {
+  const closed = selection.value.filter((i) => i.status === 'CLOSED')
+  const open = selection.value.filter((i) => i.status !== 'CLOSED')
+  const reactions = closed
     .filter((i) => i.reactionSlaSeconds !== null)
     .map((i) => (i.reactionSlaSeconds ?? 0) / 60)
-  const recoveries = incidents.value
+  const recoveries = closed
     .filter((i) => i.recoverySlaSeconds !== null)
     .map((i) => (i.recoverySlaSeconds ?? 0) / 60)
-  const avg = (arr: number[]) =>
-    arr.length > 0 ? Math.round(arr.reduce((s, v) => s + v, 0) / arr.length) : 0
-  const median = (arr: number[]) => {
-    if (arr.length === 0) return 0
+  const stats = (arr: number[]) => {
+    if (arr.length === 0) return { avg: 0, med: 0, p90: 0, n: 0 }
     const s = [...arr].sort((a, b) => a - b)
-    const mid = Math.floor(s.length / 2)
-    return Math.round(s.length % 2 === 0 ? (s[mid - 1]! + s[mid]!) / 2 : s[mid]!)
+    return {
+      avg: Math.round(s.reduce((x, v) => x + v, 0) / s.length),
+      med: Math.round(
+        s.length % 2 === 0
+          ? (s[s.length / 2 - 1]! + s[s.length / 2]!) / 2
+          : s[Math.floor(s.length / 2)]!,
+      ),
+      p90: Math.round(s[Math.min(s.length - 1, Math.floor(s.length * 0.9))] ?? 0),
+      n: s.length,
+    }
   }
-  return [
-    { label: 'Среднее, мин', color: '#00a0e9', data: [avg(reactions), avg(recoveries)] },
-    { label: 'Медиана, мин', color: '#8b5cf6', data: [median(reactions), median(recoveries)] },
-    { label: 'Целевое, мин', color: '#10b981', data: [10, 120] },
-  ]
+  return {
+    reaction: stats(reactions),
+    recovery: stats(recoveries),
+    openCount: open.length,
+  }
 })
 
-// Drill-down
-const showBreakdown = ref(false)
-const breakdownTitle = ref('')
-function openBreakdown(title: string): void {
-  breakdownTitle.value = title
-  showBreakdown.value = true
-}
-const lossIncidents = computed(() =>
-  incidents.value.filter((i) => i.lossRubles > 0).sort((a, b) => b.lossRubles - a.lossRubles),
+// ─── 32.7 Расшифровка потерь: полный реестр выборки ─────────────────────────
+
+const breakdownSort = ref<'loss' | 'hours' | 'site' | 'cause'>('loss')
+const breakdownRows = computed(() => {
+  const rows = selectionDowntimes.value.map((d) => {
+    const inc = selection.value.find((i) => i.id === d.incidentId)
+    return {
+      downtime: d,
+      inc,
+      loss: d.lossRubles,
+      hours: d.accountableDurationSeconds / 3600,
+    }
+  })
+  const sorters: Record<string, (a: (typeof rows)[0], b: (typeof rows)[0]) => number> = {
+    loss: (a, b) => b.loss - a.loss,
+    hours: (a, b) => b.hours - a.hours,
+    site: (a, b) => siteName(a.downtime.siteId).localeCompare(siteName(b.downtime.siteId)),
+    cause: (a, b) =>
+      causeLabel(a.inc?.causeCode ?? '').localeCompare(causeLabel(b.inc?.causeCode ?? '')),
+  }
+  return rows.sort(sorters[breakdownSort.value] ?? sorters.loss!)
+})
+
+// ─── Детализация причины (32.3) ──────────────────────────────────────────────
+
+const causeDetail = ref<string | null>(null)
+const causeDetailRow = computed(() =>
+  causeDetail.value ? (causeRows.value.find((r) => r.code === causeDetail.value) ?? null) : null,
 )
+const causeDetailIncidents = computed(() =>
+  causeDetail.value
+    ? selection.value.filter((i) => (i.causeCode ?? 'CA-060') === causeDetail.value)
+    : [],
+)
+
+function openCauseDetail(code: string): void {
+  causeDetail.value = code
+}
+
+function goIncident(id: string): void {
+  router.push({ name: 'incident-details', params: { incidentId: id } })
+}
 </script>
 
 <template>
   <div class="space-y-6">
-    <!-- KPIs -->
-    <div class="grid gap-4 md:grid-cols-4">
-      <Card class="kpi-clickable" @click="openBreakdown('Суммарные подтверждённые потери')">
+    <!-- 32.1 Фильтры + представления -->
+    <div class="flex flex-wrap items-end gap-3">
+      <div class="flex gap-1 rounded-lg border border-border p-1">
+        <Button
+          v-for="v in [
+            { key: 'site', label: 'Объект' },
+            { key: 'fleet', label: 'Роботопарк' },
+            { key: 'econ', label: 'Экономика' },
+          ]"
+          :key="v.key"
+          :variant="view === v.key ? 'default' : 'ghost'"
+          size="sm"
+          class="min-h-8 h-8"
+          @click="view = v.key as typeof view"
+          >{{ v.label }}</Button
+        >
+      </div>
+      <div class="space-y-1">
+        <span class="text-xs text-muted-foreground block">Объект</span>
+        <Select v-model="filterSite" aria-label="Фильтр по объекту">
+          <SelectTrigger class="w-[180px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все объекты</SelectItem>
+            <SelectItem v-for="s in sites" :key="s.id" :value="s.id">{{ s.name }}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="space-y-1">
+        <span class="text-xs text-muted-foreground block">Причина</span>
+        <Select v-model="filterCause" aria-label="Фильтр по причине">
+          <SelectTrigger class="w-[220px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все причины</SelectItem>
+            <SelectItem v-for="c in causeOptions" :key="c" :value="c">{{
+              causeLabel(c)
+            }}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="space-y-1">
+        <span class="text-xs text-muted-foreground block">Зона ответственности</span>
+        <Select v-model="filterZone" aria-label="Фильтр по зоне ответственности">
+          <SelectTrigger class="w-[180px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все зоны</SelectItem>
+            <SelectItem value="OPERATIONS">Эксплуатация склада</SelectItem>
+            <SelectItem value="IT">ИТ-инфраструктура</SelectItem>
+            <SelectItem value="SERVICE">Сервис</SelectItem>
+            <SelectItem value="INFRASTRUCTURE">Инфраструктура</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="space-y-1">
+        <span class="text-xs text-muted-foreground block">Робот</span>
+        <Select v-model="filterRobot" aria-label="Фильтр по роботу">
+          <SelectTrigger class="w-[150px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все</SelectItem>
+            <SelectItem v-for="r in robotOptions" :key="r.id" :value="r.id">{{
+              r.name
+            }}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+
+    <!-- 32.2 Верхняя сводка -->
+    <div class="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
+      <Card>
+        <CardContent class="p-4">
+          <p class="text-sm text-muted-foreground">Инцидентов</p>
+          <p class="text-2xl font-bold tabular-nums">{{ kpis.incidentsCount }}</p>
+          <p class="text-xs text-muted-foreground mt-0.5">активных: {{ kpis.activeIncidents }}</p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent class="p-4">
+          <p class="text-sm text-muted-foreground">Подтверждённый простой</p>
+          <p class="text-2xl font-bold tabular-nums">
+            {{ kpis.confirmedDowntimeHours.toFixed(1) }} ч
+          </p>
+          <p class="text-xs text-muted-foreground mt-0.5">{{ kpis.intervals }} интервалов</p>
+        </CardContent>
+      </Card>
+      <Card>
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Подтверждённые потери</p>
-          <p class="text-2xl font-bold tabular-nums">{{ liveLoss.toLocaleString('ru-RU') }} ₽</p>
-          <p class="text-xs text-muted-foreground mt-0.5">
-            {{ lossIncidents.length }} инцидентов с потерями
-          </p>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent class="p-4">
-          <p class="text-sm text-muted-foreground">Средний ущерб на инцидент</p>
           <p class="text-2xl font-bold tabular-nums">
-            {{
-              lossIncidents.length > 0
-                ? Math.round(liveLoss / lossIncidents.length).toLocaleString('ru-RU')
-                : 0
-            }}
-            ₽
+            {{ kpis.confirmedLoss.toLocaleString('ru-RU') }} ₽
           </p>
-          <p class="text-xs text-muted-foreground mt-0.5">
-            на {{ lossIncidents.length }} инц. с подтверждёнными потерями
-          </p>
+          <p class="text-xs text-muted-foreground mt-0.5">часы × ставка объекта</p>
         </CardContent>
       </Card>
       <Card>
         <CardContent class="p-4">
-          <p class="text-sm text-muted-foreground">Неклассифицированные потери</p>
-          <p class="text-2xl font-bold tabular-nums text-warning">
-            {{
-              incidents
-                .filter(
-                  (i) =>
-                    (i.causeMaturity === 'NONE' || i.causeCode === 'CA-060') && i.lossRubles > 0,
-                )
-                .reduce((s, i) => s + i.lossRubles, 0)
-                .toLocaleString('ru-RU')
-            }}
-            ₽
-          </p>
-          <p class="text-xs text-muted-foreground mt-0.5">
-            {{
-              incidents.filter(
-                (i) => (i.causeMaturity === 'NONE' || i.causeCode === 'CA-060') && i.lossRubles > 0,
-              ).length
-            }}
-            инц. без причины
-          </p>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent class="p-4">
-          <p class="text-sm text-muted-foreground">Доступность парка (30 дней)</p>
+          <p class="text-sm text-muted-foreground">Доступность парка</p>
           <p class="text-2xl font-bold tabular-nums text-success">
-            {{ stats.availability.toFixed(1) }}%
+            {{ kpis.availability.toFixed(1) }}%
           </p>
           <p class="text-xs text-muted-foreground mt-0.5">
-            {{ robots.length }} роботов · {{ stats.totalDowntimeHours }} ч простой
+            1 − {{ kpis.confirmedDowntimeHours.toFixed(1) }} ч /
+            {{ kpis.plannedFleetHours.toLocaleString('ru-RU') }} ч ({{ kpis.fleet }} роботов, 24×7)
+          </p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent class="p-4">
+          <p class="text-sm text-muted-foreground">Доля с финальной причиной</p>
+          <p class="text-2xl font-bold tabular-nums">{{ kpis.finalCauseShare.toFixed(0) }}%</p>
+          <p class="text-xs text-muted-foreground mt-0.5">
+            незавершённых разборов: {{ kpis.unfinishedReviews }}
+          </p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent class="p-4">
+          <p class="text-sm text-muted-foreground">Время реакции / восстановления</p>
+          <p class="text-lg font-bold tabular-nums">
+            {{ rtStats.reaction.med }} / {{ rtStats.recovery.med }} мин
+            <span class="text-xs font-normal text-muted-foreground">медианы</span>
+          </p>
+          <p class="text-xs text-muted-foreground mt-0.5">
+            n={{ rtStats.reaction.n }} закрытых · открытых {{ rtStats.openCount }} отдельно
           </p>
         </CardContent>
       </Card>
     </div>
 
-    <!-- Причины: horizontal bar -->
-    <Card class="card-interactive" @click="openBreakdown('Потери по причинам')">
-      <CardHeader><CardTitle>Потери по причинам</CardTitle></CardHeader>
-      <CardContent>
-        <ChartCard
-          type="bar"
-          :labels="causeLabels"
-          :datasets="[{ label: 'Потери', data: causeLossData }]"
-          horizontal
-          suffix=" ₽"
-        />
-      </CardContent>
-    </Card>
-
-    <!-- Объекты: stacked bar по зонам -->
-    <Card class="card-interactive" @click="openBreakdown('Потери по объектам')">
-      <CardHeader><CardTitle>Потери по объектам и зонам ответственности</CardTitle></CardHeader>
-      <CardContent>
-        <ChartCard
-          type="bar-stacked"
-          :labels="siteLabels"
-          :datasets="siteZoneDatasets"
-          suffix=" ₽"
-        />
-      </CardContent>
-    </Card>
-
-    <!-- Повторяемость + Время реакции -->
-    <div class="grid gap-4 lg:grid-cols-2">
+    <!-- Представление «Объект»: проблемы объекта по зонам/роботам/причинам -->
+    <template v-if="view === 'site'">
+      <!-- 32.3 Потери по причинам -->
       <Card>
-        <CardHeader><CardTitle>Повторяемость причин</CardTitle></CardHeader>
+        <CardHeader
+          ><CardTitle>Потери по причинам</CardTitle>
+          <p class="text-xs text-muted-foreground">
+            Нажмите на причину — детализация до объектов, роботов и инцидентов
+          </p></CardHeader
+        >
         <CardContent>
           <ChartCard
             type="bar"
-            :labels="repeatLabels"
-            :datasets="[{ label: 'Инцидентов', data: repeatData, color: '#f97316' }]"
-            suffix=" инц."
+            :labels="causeChartLabels"
+            :datasets="[{ label: 'Потери', data: causeChartData }]"
+            horizontal
+            suffix=" ₽"
           />
+          <div class="mt-3 space-y-1">
+            <button
+              v-for="row in causeRows"
+              :key="row.code"
+              type="button"
+              class="w-full flex items-center justify-between text-left text-sm px-3 py-2 rounded-lg hover:bg-accent/50"
+              @click="openCauseDetail(row.code)"
+            >
+              <span class="truncate">{{ row.name }}</span>
+              <span class="tabular-nums text-xs text-muted-foreground shrink-0 ml-3"
+                >{{ row.count }} сл. · {{ row.hours.toFixed(1) }} ч ·
+                {{ row.loss.toLocaleString('ru-RU') }} ₽ ({{ row.share.toFixed(0) }}%)</span
+              >
+            </button>
+          </div>
         </CardContent>
       </Card>
-      <Card>
-        <CardHeader><CardTitle>Время реакции и восстановления</CardTitle></CardHeader>
-        <CardContent>
-          <ChartCard type="bar" :labels="rtLabels" :datasets="rtDatasets" suffix=" мин" />
-        </CardContent>
-      </Card>
-    </div>
+    </template>
 
-    <!-- Детализация повторяемости -->
-    <Card>
-      <CardHeader><CardTitle>Повторяемость проблем — детализация</CardTitle></CardHeader>
-      <CardContent>
-        <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          <div
-            v-for="item in analytics.repeatProblems"
-            :key="item.code"
-            class="card-interactive border border-border rounded-lg p-3 cursor-pointer"
-            @click="router.push({ name: 'incidents' })"
-          >
-            <div class="flex justify-between mb-1">
-              <span class="font-medium text-sm">{{ causeLabel(item.code) }}</span>
-              <span class="text-lg font-bold tabular-nums">{{ item.count }}×</span>
+    <!-- Представление «Роботопарк»: сравнение объектов/роботов -->
+    <template v-else-if="view === 'fleet'">
+      <!-- 32.5 Повторяющиеся проблемы -->
+      <Card>
+        <CardHeader
+          ><CardTitle>Повторяющиеся проблемы</CardTitle>
+          <p class="text-xs text-muted-foreground">
+            Повторяемость — числом случаев и охватом, не только деньгами
+          </p></CardHeader
+        >
+        <CardContent>
+          <ChartCard
+            type="bar"
+            :labels="repeatChartLabels"
+            :datasets="[{ label: 'Случаев', data: repeatChartData, color: '#f97316' }]"
+            suffix=" сл."
+          />
+          <Table class="mt-3">
+            <TableHeader
+              ><TableRow>
+                <TableHead class="py-2 px-3">Причина</TableHead>
+                <TableHead class="py-2 px-3">Случаев</TableHead>
+                <TableHead class="py-2 px-3">Роботов</TableHead>
+                <TableHead class="py-2 px-3">Объектов</TableHead>
+                <TableHead class="py-2 px-3">Зон</TableHead>
+                <TableHead class="py-2 px-3">Повтор</TableHead>
+                <TableHead class="py-2 px-3">Часы</TableHead>
+                <TableHead class="py-2 px-3">Потери</TableHead>
+                <TableHead class="py-2 px-3"></TableHead> </TableRow
+            ></TableHeader>
+            <TableBody>
+              <TableRow v-for="row in repeatRows" :key="row.code">
+                <TableCell class="text-sm py-2 px-3">{{ row.name }}</TableCell>
+                <TableCell class="text-sm tabular-nums py-2 px-3">{{ row.count }}</TableCell>
+                <TableCell class="text-sm tabular-nums py-2 px-3">{{ row.robotsCount }}</TableCell>
+                <TableCell class="text-sm tabular-nums py-2 px-3">{{ row.sitesCount }}</TableCell>
+                <TableCell class="text-sm tabular-nums py-2 px-3">{{ row.zonesCount }}</TableCell>
+                <TableCell class="text-xs py-2 px-3">
+                  <span
+                    v-if="row.sameZoneRepeat || row.sameRobotRepeat"
+                    class="rounded px-1.5 py-0.5 bg-warning/15 text-warning"
+                    >{{ row.sameRobotRepeat ? 'тот же робот' : 'та же зона' }}</span
+                  >
+                  <span v-else class="text-muted-foreground">распылено</span>
+                </TableCell>
+                <TableCell class="text-sm tabular-nums py-2 px-3">{{
+                  row.hours.toFixed(1)
+                }}</TableCell>
+                <TableCell class="text-sm tabular-nums py-2 px-3"
+                  >{{ row.loss.toLocaleString('ru-RU') }} ₽</TableCell
+                >
+                <TableCell class="py-2 px-3">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    class="min-h-7 h-7"
+                    @click="openCauseDetail(row.code)"
+                    >Инциденты</Button
+                  >
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </template>
+
+    <!-- Представление «Экономика» -->
+    <template v-else>
+      <!-- 32.4 Потери по объектам -->
+      <Card>
+        <CardHeader
+          ><CardTitle>Потери по объектам</CardTitle>
+          <p class="text-xs text-muted-foreground">Где физически возникли потери</p></CardHeader
+        >
+        <CardContent>
+          <ChartCard
+            type="bar-stacked"
+            :labels="siteChartLabels"
+            :datasets="siteZoneDatasets"
+            suffix=" ₽"
+          />
+          <div class="mt-3 grid gap-2 md:grid-cols-3">
+            <div
+              v-for="row in siteLossRows"
+              :key="row.siteId"
+              class="border border-border rounded-lg p-3"
+            >
+              <p class="font-medium text-sm">{{ row.name }}</p>
+              <p class="text-lg font-bold tabular-nums">{{ row.loss.toLocaleString('ru-RU') }} ₽</p>
+              <p class="text-xs text-muted-foreground">
+                {{ row.hours.toFixed(1) }} ч · {{ row.zones }} зон
+              </p>
             </div>
-            <p class="text-xs text-muted-foreground">
-              {{ item.loss.toLocaleString('ru-RU') }} ₽ потерь
-            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <!-- 32.4 Потери по зонам ответственности -->
+      <Card>
+        <CardHeader
+          ><CardTitle>Потери по зонам ответственности</CardTitle>
+          <p class="text-xs text-muted-foreground">В чьём контуре первопричина</p></CardHeader
+        >
+        <CardContent class="space-y-2">
+          <div
+            v-for="row in zoneLossRows"
+            :key="row.zone"
+            class="flex items-center justify-between border border-border rounded-lg p-3"
+          >
+            <div>
+              <p class="font-medium text-sm">
+                {{ RESPONSIBILITY_ZONE_RU[row.zone] ?? row.zone }}
+              </p>
+              <p class="text-xs text-muted-foreground">{{ row.causes.size }} причин в контуре</p>
+            </div>
+            <p class="text-lg font-bold tabular-nums">{{ row.loss.toLocaleString('ru-RU') }} ₽</p>
+          </div>
+        </CardContent>
+      </Card>
+    </template>
+
+    <!-- 32.6 Время реакции и восстановления (полный блок; во всех представлениях) -->
+    <Card>
+      <CardHeader
+        ><CardTitle>Время реакции и восстановления</CardTitle>
+        <p class="text-xs text-muted-foreground">
+          Реакция = принятие в работу − создание; восстановление = подтверждение восстановления −
+          начало недоступности. Открытые инциденты не входят в расчёт.
+        </p></CardHeader
+      >
+      <CardContent class="grid gap-4 md:grid-cols-2">
+        <div class="space-y-1">
+          <p class="text-sm font-medium">Время реакции, мин</p>
+          <div class="grid grid-cols-4 gap-2 text-center">
+            <div>
+              <p class="text-lg font-bold tabular-nums">{{ rtStats.reaction.avg }}</p>
+              <p class="text-xs text-muted-foreground">среднее</p>
+            </div>
+            <div>
+              <p class="text-lg font-bold tabular-nums">{{ rtStats.reaction.med }}</p>
+              <p class="text-xs text-muted-foreground">медиана</p>
+            </div>
+            <div>
+              <p class="text-lg font-bold tabular-nums">{{ rtStats.reaction.p90 }}</p>
+              <p class="text-xs text-muted-foreground">p90</p>
+            </div>
+            <div>
+              <p class="text-lg font-bold tabular-nums">{{ rtStats.reaction.n }}</p>
+              <p class="text-xs text-muted-foreground">в расчёте</p>
+            </div>
+          </div>
+        </div>
+        <div class="space-y-1">
+          <p class="text-sm font-medium">Время восстановления, мин</p>
+          <div class="grid grid-cols-4 gap-2 text-center">
+            <div>
+              <p class="text-lg font-bold tabular-nums">{{ rtStats.recovery.avg }}</p>
+              <p class="text-xs text-muted-foreground">среднее</p>
+            </div>
+            <div>
+              <p class="text-lg font-bold tabular-nums">{{ rtStats.recovery.med }}</p>
+              <p class="text-xs text-muted-foreground">медиана</p>
+            </div>
+            <div>
+              <p class="text-lg font-bold tabular-nums">{{ rtStats.recovery.p90 }}</p>
+              <p class="text-xs text-muted-foreground">p90</p>
+            </div>
+            <div>
+              <p class="text-lg font-bold tabular-nums">{{ rtStats.recovery.n }}</p>
+              <p class="text-xs text-muted-foreground">в расчёте</p>
+            </div>
           </div>
         </div>
       </CardContent>
     </Card>
 
-    <!-- Ставки -->
-    <Card v-if="auth.can('economics.rates.manage')">
-      <CardHeader><CardTitle>Ставки стоимости простоя</CardTitle></CardHeader>
-      <CardContent class="p-0">
-        <Table>
-          <TableHeader
-            ><TableRow>
-              <TableHead class="py-2 px-4">Объект</TableHead
-              ><TableHead class="py-2 px-4">Ставка</TableHead>
-              <TableHead class="py-2 px-4">Действует с</TableHead
-              ><TableHead class="py-2 px-4">Основание</TableHead>
-            </TableRow></TableHeader
-          >
-          <TableBody>
-            <TableRow v-for="rate in costRates" :key="rate.id" class="row-interactive">
-              <TableCell class="text-sm py-3 px-4">{{ rate.siteName }}</TableCell>
-              <TableCell class="text-sm font-medium tabular-nums py-3 px-4"
-                >{{ rate.ratePerHour.toLocaleString('ru-RU') }} ₽/ч</TableCell
-              >
-              <TableCell class="text-xs font-mono py-3 px-4">{{
-                rate.effectiveFrom.slice(0, 10)
-              }}</TableCell>
-              <TableCell class="text-xs py-3 px-4">{{ rate.basis }}</TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
-
-    <!-- Расшифровка -->
+    <!-- 32.7 Расшифровка потерь: полный реестр выборки -->
     <Card>
       <CardHeader>
-        <div class="flex items-center justify-between">
-          <CardTitle>Расшифровка потерь</CardTitle>
-          <button
-            class="text-xs text-primary hover:underline"
-            @click="openBreakdown('Расшифровка потерь')"
-          >
-            Показать все →
-          </button>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <CardTitle>Расшифровка потерь</CardTitle>
+            <p class="text-xs text-muted-foreground mt-0.5">
+              Все строки текущего расчёта; итог равен агрегату
+            </p>
+          </div>
+          <div class="flex gap-2">
+            <Select v-model="breakdownSort" aria-label="Сортировка расшифровки">
+              <SelectTrigger class="w-[190px] min-h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="loss">По сумме</SelectItem>
+                <SelectItem value="hours">По длительности</SelectItem>
+                <SelectItem value="site">По объекту</SelectItem>
+                <SelectItem value="cause">По причине</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </CardHeader>
       <CardContent class="p-0">
-        <Table>
-          <TableHeader
-            ><TableRow>
-              <TableHead class="py-2 px-4">Инцидент</TableHead
-              ><TableHead class="py-2 px-4">Часов</TableHead>
-              <TableHead class="py-2 px-4">Ставка</TableHead
-              ><TableHead class="py-2 px-4">Формула</TableHead
-              ><TableHead class="py-2 px-4">Сумма</TableHead>
-            </TableRow></TableHeader
+        <div class="px-6 pt-3 flex flex-wrap gap-4 text-sm text-muted-foreground">
+          <span
+            >Строк:
+            <strong class="text-foreground tabular-nums">{{ breakdownRows.length }}</strong>
+            (все из {{ selection.length }} инцидентов)</span
           >
-          <TableBody>
-            <TableRow
-              v-for="snap in costSnapshots.slice(0, 10)"
-              :key="snap.downtimeId"
-              class="row-interactive cursor-pointer"
-              @click="
-                router.push({ name: 'incident-details', params: { incidentId: snap.incidentId } })
-              "
+          <span
+            >Итого:
+            <strong class="text-foreground tabular-nums"
+              >{{ kpis.confirmedLoss.toLocaleString('ru-RU') }} ₽</strong
             >
-              <TableCell class="text-xs py-3 px-4 text-primary hover:underline">{{
-                snap.incidentId
-              }}</TableCell>
-              <TableCell class="text-sm tabular-nums py-3 px-4">{{
-                snap.hours.toFixed(2)
-              }}</TableCell>
-              <TableCell class="text-sm tabular-nums py-3 px-4"
-                >{{ snap.ratePerHour.toLocaleString('ru-RU') }} ₽</TableCell
-              >
-              <TableCell class="text-xs text-muted-foreground py-3 px-4">{{
-                snap.formula
-              }}</TableCell>
-              <TableCell class="text-sm font-medium tabular-nums py-3 px-4"
-                >{{ snap.totalRubles.toLocaleString('ru-RU') }} ₽</TableCell
-              >
-            </TableRow>
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
-
-    <!-- Drill-down -->
-    <Dialog v-model:open="showBreakdown">
-      <DialogContent
-        class="w-[90%] max-w-[1200px] sm:max-w-[1200px] max-h-[85vh] flex flex-col gap-0 sm:p-0"
-      >
-        <DialogHeader class="p-6 pb-3 shrink-0">
-          <DialogTitle>{{ breakdownTitle }}</DialogTitle>
-          <DialogDescription>
-            Все инциденты, входящие в текущую выборку; итог равен агрегату. Строки отсортированы по
-            сумме потерь.
-          </DialogDescription>
-        </DialogHeader>
-        <div class="overflow-y-auto px-6 flex-1">
-          <p class="text-xs text-muted-foreground mb-2">
-            Показано {{ lossIncidents.length }} из {{ incidents.length }} инцидентов (с
-            подтверждёнными потерями)
-          </p>
+            · {{ kpis.confirmedDowntimeHours.toFixed(1) }} ч</span
+          >
+        </div>
+        <div class="overflow-x-auto max-h-[480px] overflow-y-auto">
           <Table>
             <TableHeader
               ><TableRow>
-                <TableHead>Инцидент</TableHead><TableHead>Тип</TableHead
-                ><TableHead>Причина</TableHead> <TableHead>Часов</TableHead
-                ><TableHead>Сумма</TableHead>
+                <TableHead class="py-2 px-4">Инцидент</TableHead>
+                <TableHead class="py-2 px-4">Объект · зона</TableHead>
+                <TableHead class="py-2 px-4">Робот</TableHead>
+                <TableHead class="py-2 px-4">Причина</TableHead>
+                <TableHead class="py-2 px-4">Интервал</TableHead>
+                <TableHead class="py-2 px-4">Часы</TableHead>
+                <TableHead class="py-2 px-4">Ставка</TableHead>
+                <TableHead class="py-2 px-4">Сумма</TableHead>
               </TableRow></TableHeader
             >
             <TableBody>
-              <TableRow
-                v-for="inc in lossIncidents"
-                :key="inc.id"
-                class="row-interactive cursor-pointer"
-                @click="
-                  () => {
-                    router.push({ name: 'incident-details', params: { incidentId: inc.id } })
-                    showBreakdown = false
-                  }
-                "
+              <TableEmpty v-if="breakdownRows.length === 0" :colspan="8"
+                >В выборке нет подтверждённых потерь.</TableEmpty
               >
-                <TableCell class="text-xs py-2 px-4 text-primary">{{
-                  inc.incidentNumber
+              <TableRow
+                v-for="row in breakdownRows"
+                :key="row.downtime.id"
+                class="row-interactive cursor-pointer"
+                @click="row.inc && goIncident(row.inc.id)"
+              >
+                <TableCell class="text-xs text-primary py-2 px-4">{{
+                  row.inc?.incidentNumber ?? row.downtime.incidentId
                 }}</TableCell>
+                <TableCell class="text-xs py-2 px-4"
+                  >{{ siteName(row.downtime.siteId)
+                  }}<span v-if="row.downtime.zoneName" class="text-muted-foreground">
+                    · {{ row.downtime.zoneName }}</span
+                  ></TableCell
+                >
                 <TableCell class="text-xs py-2 px-4">{{
-                  incidentTypeLabel(inc.incidentTypeCode).split(' · ')[1]
+                  robotName(row.downtime.robotId)
                 }}</TableCell>
-                <TableCell class="text-xs py-2 px-4">{{
-                  causeLabel(inc.causeCode).split(' · ')[1] ?? '—'
-                }}</TableCell>
+                <TableCell class="text-xs py-2 px-4 max-w-[200px]"
+                  ><span class="truncate block">{{
+                    causeLabel(row.inc?.causeCode ?? null)
+                  }}</span></TableCell
+                >
+                <TableCell class="text-xs font-mono tabular-nums py-2 px-4"
+                  >{{ row.downtime.startedAt.slice(0, 10) }} →
+                  {{ row.downtime.endedAt?.slice(0, 10) ?? '…' }}</TableCell
+                >
                 <TableCell class="text-xs tabular-nums py-2 px-4">{{
-                  (inc.downtimeSeconds / 3600).toFixed(1)
+                  row.hours.toFixed(2)
                 }}</TableCell>
+                <TableCell class="text-xs tabular-nums py-2 px-4"
+                  >{{ row.downtime.ratePerHour.toLocaleString('ru-RU') }} ₽/ч</TableCell
+                >
                 <TableCell class="text-xs font-medium tabular-nums py-2 px-4"
-                  >{{ inc.lossRubles.toLocaleString('ru-RU') }} ₽</TableCell
+                  >{{ row.loss.toLocaleString('ru-RU') }} ₽</TableCell
                 >
               </TableRow>
             </TableBody>
           </Table>
         </div>
-        <div class="p-4 border-t border-border shrink-0">
-          <p class="text-sm">
-            Итого:
-            <strong class="tabular-nums">{{ liveLoss.toLocaleString('ru-RU') }} ₽</strong>
-            <span class="text-xs text-muted-foreground ml-2"
-              >{{ lossIncidents.length }} инцидентов ·
-              {{ (lossIncidents.reduce((s, i) => s + i.downtimeSeconds, 0) / 3600).toFixed(1) }}
-              ч</span
+      </CardContent>
+    </Card>
+
+    <!-- Детализация причины (32.3) -->
+    <Dialog :open="Boolean(causeDetail)" @update:open="(v) => !v && (causeDetail = null)">
+      <DialogContent
+        class="w-[90%] max-w-[1100px] sm:max-w-[1100px] max-h-[85vh] flex flex-col gap-0 p-0"
+      >
+        <DialogHeader class="p-6 pb-3 shrink-0">
+          <DialogTitle>{{ causeDetailRow?.name ?? causeDetail }}</DialogTitle>
+          <DialogDescription>
+            Все инциденты этой причины в текущей выборке; суммы равны агрегату.
+          </DialogDescription>
+        </DialogHeader>
+        <div class="overflow-y-auto px-6 flex-1">
+          <div
+            v-if="causeDetailRow"
+            class="flex flex-wrap gap-4 text-sm pb-3 border-b border-border mb-3"
+          >
+            <span
+              >Случаев: <strong class="tabular-nums">{{ causeDetailRow.count }}</strong></span
             >
-          </p>
+            <span
+              >Часов:
+              <strong class="tabular-nums">{{ causeDetailRow.hours.toFixed(1) }}</strong></span
+            >
+            <span
+              >Потери:
+              <strong class="tabular-nums"
+                >{{ causeDetailRow.loss.toLocaleString('ru-RU') }} ₽</strong
+              >
+              ({{ causeDetailRow.share.toFixed(0) }}%)</span
+            >
+            <span
+              >Роботов: <strong class="tabular-nums">{{ causeDetailRow.robots }}</strong> ·
+              объектов: {{ causeDetailRow.sitesCount }} · зон: {{ causeDetailRow.zonesCount }}</span
+            >
+            <span
+              v-if="causeDetailRow.sitesCount > 1"
+              class="text-xs text-muted-foreground self-center"
+              >проблема повторяется по сети</span
+            >
+            <span v-else class="text-xs text-muted-foreground self-center"
+              >проблема локальна для одного объекта</span
+            >
+          </div>
+          <Table>
+            <TableHeader
+              ><TableRow>
+                <TableHead class="py-2 px-3">Инцидент</TableHead>
+                <TableHead class="py-2 px-3">Объект · зона</TableHead>
+                <TableHead class="py-2 px-3">Робот</TableHead>
+                <TableHead class="py-2 px-3">Статус</TableHead>
+                <TableHead class="py-2 px-3">Простой</TableHead>
+                <TableHead class="py-2 px-3">Потери</TableHead>
+              </TableRow></TableHeader
+            >
+            <TableBody>
+              <TableRow
+                v-for="inc in causeDetailIncidents"
+                :key="inc.id"
+                class="row-interactive cursor-pointer"
+                @click="goIncident(inc.id)"
+              >
+                <TableCell class="text-xs text-primary py-2 px-3">{{
+                  inc.incidentNumber
+                }}</TableCell>
+                <TableCell class="text-xs py-2 px-3"
+                  >{{ siteName(inc.siteId) }} · {{ inc.zoneName }}</TableCell
+                >
+                <TableCell class="text-xs py-2 px-3">{{ robotName(inc.robotId) }}</TableCell>
+                <TableCell class="text-xs py-2 px-3">{{
+                  inc.status === 'CLOSED' ? 'закрыт' : 'в работе'
+                }}</TableCell>
+                <TableCell class="text-xs tabular-nums py-2 px-3"
+                  >{{ (inc.downtimeSeconds / 3600).toFixed(1) }} ч</TableCell
+                >
+                <TableCell class="text-xs tabular-nums py-2 px-3"
+                  >{{ inc.lossRubles.toLocaleString('ru-RU') }} ₽</TableCell
+                >
+              </TableRow>
+            </TableBody>
+          </Table>
         </div>
       </DialogContent>
     </Dialog>

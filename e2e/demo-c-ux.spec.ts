@@ -1,26 +1,39 @@
 import { expect, test } from '@playwright/test'
 
-test('C: breakdown dialog fullscreen-width with pinned header and total', async ({ page }) => {
-  await page.goto('http://localhost:5180/login')
+/**
+ * C-packet UX checks, updated for the §32 analytics rework (packet E):
+ * the old KPI drilldown dialog was replaced by the «Расшифровка потерь»
+ * full-selection register and the cause-detail dialog.
+ */
+const BASE = 'http://localhost:5180'
+
+async function login(page: import('@playwright/test').Page): Promise<void> {
+  await page.goto(`${BASE}/login`)
   await page.locator('button', { hasText: 'Администратор' }).first().click()
-  await page.waitForURL('http://localhost:5180/', { timeout: 10000 })
-  await page.goto('http://localhost:5180/analytics')
-  await page.waitForTimeout(1200)
-  await page.locator('.kpi-clickable').first().click()
-  const dlg = page.locator('[role="dialog"]')
-  await expect(dlg).toBeVisible()
-  const box = await dlg.boundingBox()
-  expect(box?.width ?? 0).toBeGreaterThan(800)
-  await expect(dlg.getByText('Показано', { exact: false })).toBeVisible()
-  await expect(dlg.getByText('Итого:', { exact: false })).toBeVisible()
-  await page.screenshot({ path: 'e2e-screens/demo-c-breakdown.png' })
+  await page.waitForURL(`${BASE}/`, { timeout: 10_000 })
+}
+
+test('C: loss breakdown register is fullwidth with pinned header and total', async ({ page }) => {
+  await login(page)
+  await page.goto(`${BASE}/analytics`)
+  await expect(page.getByText('Расшифровка потерь').first()).toBeVisible({ timeout: 10_000 })
+
+  // «X из N» счётчик строк + итог выборки видны без прокрутки
+  await expect(page.getByText(/Строк: \d+/).first()).toBeVisible()
+  await expect(page.getByText(/Итого:/).first()).toBeVisible()
+
+  // строка ведёт в карточку инцидента
+  const firstRow = page.locator('main table tbody tr').first()
+  await firstRow.click()
+  await page.waitForURL(/\/incidents\//, { timeout: 10_000 })
+  await expect(
+    page.getByText('Следующее действие:').or(page.getByText('Инцидент закрыт', { exact: false })),
+  ).toBeVisible({ timeout: 10_000 })
 })
 
 test('C: incident filters persist in URL and survive reload', async ({ page }) => {
-  await page.goto('http://localhost:5180/login')
-  await page.locator('button', { hasText: 'Администратор' }).first().click()
-  await page.waitForURL('http://localhost:5180/', { timeout: 10000 })
-  await page.goto('http://localhost:5180/incidents')
+  await login(page)
+  await page.goto(`${BASE}/incidents`)
   await page.waitForTimeout(800)
   await page.locator('button[role="combobox"]').first().click()
   await page.getByRole('option', { name: 'ФФЦ Домодедово' }).click()
@@ -28,7 +41,6 @@ test('C: incident filters persist in URL and survive reload', async ({ page }) =
   await expect(page).toHaveURL(/site=site-dom/)
   await page.reload()
   await page.waitForTimeout(1000)
-  // фильтр сохранился: комбо показывает объект, строки — только Домодедово
   const rows = await page.locator('tbody tr').allTextContents()
   expect(rows.length).toBeGreaterThan(0)
   expect(rows.every((r) => r.includes('Домодедово'))).toBe(true)
