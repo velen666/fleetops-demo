@@ -696,7 +696,7 @@ const templates: T[] = [
     causeCode: 'CA-060',
     maturity: 'PRIMARY',
     dtStatus: 'PROPOSED',
-    dtHours: 0,
+    dtHours: 0.4,
     actions: [],
     recovery: false,
     daysAgo: 0,
