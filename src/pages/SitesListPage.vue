@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useDemoData } from '@/composables/useDemoData'
+import { useRouter } from 'vue-router'
+const router = useRouter()
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Table,
@@ -166,7 +168,7 @@ function fmtDate(iso: string): string {
               v-for="site in filteredSites"
               :key="site.id"
               class="row-interactive cursor-pointer"
-              @click="selectedSite = site"
+              @click="router.push({ name: 'site-details', params: { siteId: site.id } })"
             >
               <TableCell class="font-medium text-sm py-3 px-4">{{ site.name }}</TableCell>
               <TableCell class="text-xs py-3 px-4">{{ site.address }}</TableCell>

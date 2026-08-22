@@ -77,10 +77,22 @@ export const router = createRouter({
           meta: { title: 'Роботы', icon: 'Bot', sidebarOrder: 60 },
         },
         {
+          path: 'robots/:robotId',
+          name: 'robot-details',
+          component: () => import('@/pages/RobotDetailsPage.vue'),
+          meta: { title: 'Карточка робота', hidden: true },
+        },
+        {
           path: 'sites',
           name: 'sites',
           component: () => import('@/pages/SitesListPage.vue'),
           meta: { title: 'Объекты', icon: 'MapPin', sidebarOrder: 62 },
+        },
+        {
+          path: 'sites/:siteId',
+          name: 'site-details',
+          component: () => import('@/pages/SiteDetailsPage.vue'),
+          meta: { title: 'Карточка объекта', hidden: true },
         },
         {
           path: 'maintenance',

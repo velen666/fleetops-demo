@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useDemoData } from '@/composables/useDemoData'
+import { useRouter } from 'vue-router'
+const router = useRouter()
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Table,
@@ -177,7 +179,7 @@ function availClass(v: number): string {
               v-for="robot in filteredRobots"
               :key="robot.id"
               class="row-interactive cursor-pointer"
-              @click="selectedRobot = robot"
+              @click="router.push({ name: 'robot-details', params: { robotId: robot.id } })"
             >
               <TableCell class="font-medium text-sm py-3 px-4">{{ robot.name }}</TableCell>
               <TableCell class="text-xs py-3 px-4">{{ robot.model }}</TableCell>
