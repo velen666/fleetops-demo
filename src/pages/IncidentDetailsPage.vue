@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import DateTimeField from '@/components/DateTimeField.vue'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -130,7 +131,7 @@ const causeEvidence = ref('')
 const actName = ref('')
 const actDesc = ref('')
 const actExecutor = ref('')
-const actDue = ref('')
+const actDue = ref<string | null>(null)
 const completeResult = ref<'SUCCESS' | 'PARTIAL_SUCCESS' | 'FAILURE' | 'POSTPONED'>('SUCCESS')
 const completeComment = ref('')
 const completeActionId = ref('')
@@ -147,7 +148,7 @@ function openCause(maturity: 'PRIMARY' | 'REFINED' | 'FINAL'): void {
   causeMaturityTarget.value = maturity
   causeCode.value = incident.value?.causeCode ?? ''
   causeComment.value = ''
-  causeEvidence.value = 'Осмотр, журнал системы, контрольный маршрут'
+  causeEvidence.value = ''
   showCause.value = true
 }
 const causeMaturityTarget = ref<'PRIMARY' | 'REFINED' | 'FINAL'>('PRIMARY')
@@ -836,18 +837,30 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
             </Select>
           </div>
           <div class="space-y-1.5">
-            <Label for="cause-comment">Комментарий человека *</Label>
+            <Label for="cause-comment">
+              Комментарий человека *
+              <span class="text-xs font-normal text-muted-foreground">
+                (минимум 20 символов — что конкретно установлено; осталось
+                {{ Math.max(0, 20 - causeComment.trim().length) }})
+              </span>
+            </Label>
             <Textarea
               id="cause-comment"
               v-model="causeComment"
               rows="3"
               maxlength="500"
+              aria-describedby="cause-comment-hint"
               placeholder="Например: на оптическом окне лидара обнаружен слой пыли; после очистки качество сканирования восстановилось"
             />
           </div>
           <div class="space-y-1.5">
             <Label for="cause-evidence">Доказательства (через запятую)</Label>
-            <Input id="cause-evidence" v-model="causeEvidence" />
+            <Input
+              id="cause-evidence"
+              v-model="causeEvidence"
+              placeholder="Например: осмотр, журнал системы, фото"
+            />
+            <p class="text-xs text-muted-foreground">Необязательно: чем подтверждается вывод.</p>
           </div>
         </div>
         <DialogFooter>
@@ -855,6 +868,13 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
           <Button
             class="min-h-10"
             :disabled="!causeCode || causeComment.trim().length < 20"
+            :title="
+              !causeCode
+                ? 'Выберите причину из классификатора'
+                : causeComment.trim().length < 20
+                  ? 'Комментарий человека — минимум 20 символов'
+                  : undefined
+            "
             @click="submitCause"
             >Записать</Button
           >
@@ -892,7 +912,12 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
             </div>
             <div class="space-y-1.5">
               <Label for="act-due">Срок</Label>
-              <Input id="act-due" v-model="actDue" type="datetime-local" />
+              <DateTimeField
+                id="act-due"
+                v-model="actDue"
+                aria-label="Срок выполнения"
+                placeholder="Не задан — по умолчанию сутки"
+              />
             </div>
           </div>
         </div>
@@ -1010,8 +1035,14 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
               v-model.number="dtAdjustMinutes as never"
               type="number"
               min="1"
+              step="1"
+              inputmode="numeric"
               placeholder="например 90"
+              aria-describedby="dt-min-hint"
             />
+            <p id="dt-min-hint" class="text-xs text-muted-foreground">
+              Целое число минут: скорректированная учётная длительность интервала.
+            </p>
           </div>
           <div class="space-y-1.5">
             <Label for="dt-comment">Основание</Label>

@@ -35,6 +35,11 @@ const { incidents, downtimes, analytics, robots, sites, costRates } = useDemoDat
 const auth = useAuthStore()
 const router = useRouter()
 
+/** Строки расшифровки диалога: инциденты с подтверждёнными потерями, по убыванию суммы. */
+const breakdownRows = computed(() =>
+  incidents.value.filter((i) => i.lossRubles > 0).sort((a, b) => b.lossRubles - a.lossRubles),
+)
+
 const selectedSite = ref('all')
 const showBreakdown = ref(false)
 const breakdownTitle = ref('')
@@ -349,47 +354,98 @@ function openBreakdown(title: string): void {
       </Card>
     </div>
 
-    <!-- Breakdown dialog -->
+    <!-- Breakdown dialog: полноширинная таблица с прокруткой по X и Y, закреплённый заголовок, итог -->
     <Dialog v-model:open="showBreakdown">
-      <DialogContent class="max-w-2xl">
-        <DialogHeader>
+      <DialogContent
+        class="w-[90%] max-w-[1200px] sm:max-w-[1200px] max-h-[85vh] flex flex-col gap-0 p-0"
+      >
+        <DialogHeader class="p-6 pb-3 shrink-0">
           <DialogTitle>{{ breakdownTitle }}</DialogTitle>
-          <DialogDescription>Расшифровка показателя — {{ siteName }}</DialogDescription>
+          <DialogDescription>
+            Расшифровка показателя — {{ siteName }}. Клик по строке открывает карточку инцидента.
+          </DialogDescription>
         </DialogHeader>
-        <Table>
-          <TableHeader
-            ><TableRow>
-              <TableHead>Инцидент</TableHead><TableHead>Тип</TableHead
-              ><TableHead>Причина</TableHead> <TableHead>Простой</TableHead
-              ><TableHead>Потери</TableHead>
-            </TableRow></TableHeader
+        <div class="flex-1 min-h-0 overflow-auto px-6">
+          <p class="text-xs text-muted-foreground mb-2">
+            Строк: {{ breakdownRows.length }} · Итого:
+            {{ breakdownRows.reduce((s, i) => s + i.lossRubles, 0).toLocaleString('ru-RU') }} ₽ ·
+            {{ (breakdownRows.reduce((s, i) => s + i.downtimeSeconds, 0) / 3600).toFixed(1) }} ч
+          </p>
+          <table class="w-max min-w-full border-collapse">
+            <thead class="sticky top-0 z-10 bg-background">
+              <tr class="border-b">
+                <th
+                  v-for="h in [
+                    'Инцидент',
+                    'Наблюдение',
+                    'Тип',
+                    'Причина',
+                    'Объект · зона',
+                    'Робот',
+                    'Статус',
+                    'Простой',
+                    'Потери',
+                    'Координатор',
+                  ]"
+                  :key="h"
+                  class="text-left text-xs font-medium text-muted-foreground py-2 px-3 whitespace-nowrap"
+                >
+                  {{ h }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="inc in breakdownRows"
+                :key="inc.id"
+                class="row-interactive cursor-pointer border-b border-border/40"
+                @click="
+                  () => {
+                    router.push({ name: 'incident-details', params: { incidentId: inc.id } })
+                    showBreakdown = false
+                  }
+                "
+              >
+                <td class="text-xs py-2 px-3 text-primary whitespace-nowrap">
+                  {{ inc.incidentNumber }}
+                </td>
+                <td class="text-xs py-2 px-3 max-w-[260px]">
+                  <span class="truncate block">{{ inc.title }}</span>
+                </td>
+                <td class="text-xs py-2 px-3 whitespace-nowrap">
+                  {{ incidentTypeLabel(inc.incidentTypeCode) }}
+                </td>
+                <td class="text-xs py-2 px-3 max-w-[200px]">
+                  <span class="truncate block">{{ causeLabel(inc.causeCode) }}</span>
+                </td>
+                <td class="text-xs py-2 px-3 whitespace-nowrap">
+                  {{ siteName }} · {{ inc.zoneName ?? '—' }}
+                </td>
+                <td class="text-xs py-2 px-3 whitespace-nowrap">
+                  {{ robots.find((r) => r.id === inc.robotId)?.name ?? '—' }}
+                </td>
+                <td class="text-xs py-2 px-3 whitespace-nowrap">
+                  {{ inc.status === 'CLOSED' ? 'закрыт' : 'в работе' }}
+                </td>
+                <td class="text-xs tabular-nums py-2 px-3 whitespace-nowrap">
+                  {{ (inc.downtimeSeconds / 3600).toFixed(1) }} ч
+                </td>
+                <td class="text-xs font-medium tabular-nums py-2 px-3 whitespace-nowrap">
+                  {{ inc.lossRubles.toLocaleString('ru-RU') }} ₽
+                </td>
+                <td class="text-xs py-2 px-3 whitespace-nowrap">
+                  {{ inc.coordinatorName ?? '—' }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p
+            v-if="breakdownRows.length === 0"
+            class="text-sm text-muted-foreground py-6 text-center"
           >
-          <TableBody>
-            <TableRow
-              v-for="inc in filteredIncidents.filter((i) => i.lossRubles > 0)"
-              :key="inc.id"
-              class="row-interactive cursor-pointer"
-              @click="
-                () => {
-                  router.push({ name: 'incident-details', params: { incidentId: inc.id } })
-                  showBreakdown = false
-                }
-              "
-            >
-              <TableCell class="text-xs py-2 px-4 text-primary">{{ inc.incidentNumber }}</TableCell>
-              <TableCell class="text-xs py-2 px-4">{{
-                incidentTypeLabel(inc.incidentTypeCode)
-              }}</TableCell>
-              <TableCell class="text-xs py-2 px-4">{{ causeLabel(inc.causeCode) }}</TableCell>
-              <TableCell class="text-xs tabular-nums py-2 px-4"
-                >{{ (inc.downtimeSeconds / 3600).toFixed(1) }} ч</TableCell
-              >
-              <TableCell class="text-xs font-medium tabular-nums py-2 px-4"
-                >{{ inc.lossRubles.toLocaleString('ru-RU') }} ₽</TableCell
-              >
-            </TableRow>
-          </TableBody>
-        </Table>
+            Нет инцидентов с подтверждёнными потерями в этой категории.
+          </p>
+        </div>
       </DialogContent>
     </Dialog>
   </div>
