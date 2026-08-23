@@ -10,3 +10,5 @@ src/components/ui
 *.log
 ZIMA_FleetOps-TZ_v1.6.md
 TZ_V1.6_PLAN.md
+e2e-results
+e2e-screens

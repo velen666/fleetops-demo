@@ -25,6 +25,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Download } from 'lucide-vue-next'
+import { downloadCsv } from '@/lib/csv'
 import {
   Select,
   SelectContent,
@@ -370,6 +372,37 @@ function openCauseDetail(code: string): void {
 
 function goIncident(id: string): void {
   router.push({ name: 'incident-details', params: { incidentId: id } })
+}
+
+function exportBreakdownCsv(): void {
+  const rows = breakdownRows.value.map((row) => [
+    row.inc?.incidentNumber ?? row.downtime.incidentId,
+    siteName(row.downtime.siteId),
+    row.downtime.zoneName ?? '',
+    robotName(row.downtime.robotId),
+    causeLabel(row.inc?.causeCode ?? null),
+    row.downtime.startedAt.slice(0, 19).replace('T', ' '),
+    row.downtime.endedAt?.slice(0, 19).replace('T', ' ') ?? '',
+    row.hours.toFixed(2),
+    row.downtime.ratePerHour,
+    row.loss,
+  ])
+  downloadCsv(
+    'loss-breakdown-' + new Date().toISOString().slice(0, 10) + '.csv',
+    [
+      'Инцидент',
+      'Объект',
+      'Зона',
+      'Робот',
+      'Причина',
+      'Начало',
+      'Окончание',
+      'Часы',
+      'Ставка',
+      'Сумма',
+    ],
+    rows,
+  )
 }
 </script>
 
@@ -728,6 +761,9 @@ function goIncident(id: string): void {
             </p>
           </div>
           <div class="flex gap-2">
+            <Button size="sm" variant="outline" class="min-h-9" @click="exportBreakdownCsv"
+              ><Download class="size-3.5 mr-1" /> Экспорт CSV</Button
+            >
             <Select v-model="breakdownSort" aria-label="Сортировка расшифровки">
               <SelectTrigger class="w-[190px] min-h-9"><SelectValue /></SelectTrigger>
               <SelectContent>

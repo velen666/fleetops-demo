@@ -4,8 +4,10 @@ import { useDemoData } from '@/composables/useDemoData'
 import { incidentTypeLabel, causeLabel } from '@/data/generator'
 import { INCIDENT_STATUS_RU, INCIDENT_STATUS_CLASS } from '@/data/labels'
 import { useAuthStore } from '@/stores/auth'
+import { useSavedViews } from '@/composables/useSavedViews'
+import { downloadCsv } from '@/lib/csv'
 import { useRoute, useRouter } from 'vue-router'
-import { Plus, RotateCcw } from 'lucide-vue-next'
+import { Plus, RotateCcw, Download, Star } from 'lucide-vue-next'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
@@ -204,6 +206,70 @@ function submitCreate(): void {
 const robotsForSite = computed(() =>
   robots.value.filter((r) => !createSite.value || r.siteId === createSite.value),
 )
+
+// ─── Сохранённые представления + экспорт (§20-H) ─────────────────────────────
+
+const { views: savedViews, save: saveView, remove: removeView } = useSavedViews('incidents')
+
+const showSaveView = ref(false)
+const newViewName = ref('')
+
+function currentQuery(): Record<string, string> {
+  const q: Record<string, string> = {}
+  if (activeQueue.value !== 'all') q.queue = activeQueue.value
+  if (filterSite.value !== 'all') q.site = filterSite.value
+  if (filterStatus.value !== 'all') q.status = filterStatus.value
+  if (searchText.value.trim()) q.q = searchText.value.trim()
+  return q
+}
+
+function applyView(query: Record<string, string>): void {
+  activeQueue.value = query.queue ?? 'all'
+  filterSite.value = query.site ?? 'all'
+  filterStatus.value = query.status ?? 'all'
+  searchText.value = query.q ?? ''
+}
+
+function submitSaveView(): void {
+  if (!newViewName.value.trim()) return
+  if (saveView(newViewName.value.trim(), currentQuery())) {
+    newViewName.value = ''
+    showSaveView.value = false
+  }
+}
+
+function exportCsv(): void {
+  const rows = filteredIncidents.value.map((i) => [
+    i.incidentNumber,
+    i.title,
+    siteName(i.siteId),
+    robotName(i.robotId),
+    i.zoneName ?? '',
+    INCIDENT_STATUS_RU[i.status] ?? i.status,
+    i.causeCode ?? '',
+    i.downtimeSeconds > 0 ? (i.downtimeSeconds / 3600).toFixed(2) : '',
+    i.lossRubles,
+    i.coordinatorName ?? '',
+    i.detectedAt.slice(0, 19).replace('T', ' '),
+  ])
+  downloadCsv(
+    `incidents-${new Date().toISOString().slice(0, 10)}.csv`,
+    [
+      'Инцидент',
+      'Наблюдение',
+      'Объект',
+      'Робот',
+      'Зона',
+      'Статус',
+      'Причина',
+      'Простой (ч)',
+      'Потери (₽)',
+      'Координатор',
+      'Обнаружен',
+    ],
+    rows,
+  )
+}
 </script>
 
 <template>
@@ -220,7 +286,35 @@ const robotsForSite = computed(() =>
         <Button size="sm" variant="ghost" class="min-h-9" @click="resetDemo"
           ><RotateCcw class="size-4 mr-1" /> Сбросить демо-данные</Button
         >
+        <Button size="sm" variant="outline" class="min-h-9" @click="exportCsv"
+          ><Download class="size-4 mr-1" /> Экспорт CSV</Button
+        >
+        <Button size="sm" variant="outline" class="min-h-9" @click="showSaveView = true"
+          ><Star class="size-4 mr-1" /> Сохранить представление</Button
+        >
       </div>
+    </div>
+
+    <!-- Saved views -->
+    <div v-if="savedViews.length > 0" class="flex flex-wrap gap-2 items-center">
+      <span class="text-xs text-muted-foreground">Представления:</span>
+      <span
+        v-for="v in savedViews"
+        :key="v.id"
+        class="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2.5 py-1 text-xs cursor-pointer hover:bg-accent"
+        title="Применить сохранённый фильтр"
+        @click="applyView(v.query)"
+      >
+        {{ v.name }}
+        <button
+          type="button"
+          class="text-muted-foreground hover:text-destructive"
+          aria-label="Удалить представление"
+          @click.stop="removeView(v.id)"
+        >
+          ×
+        </button>
+      </span>
     </div>
 
     <!-- Quick queues -->
@@ -446,6 +540,32 @@ const robotsForSite = computed(() =>
             :disabled="!createSite || !createZone.trim() || !createObservation.trim()"
             @click="submitCreate"
             >Зарегистрировать</Button
+          >
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Диалог: сохранить представление -->
+    <Dialog :open="showSaveView" @update:open="(v) => (showSaveView = v)">
+      <DialogContent class="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Сохранить представление</DialogTitle>
+          <DialogDescription>
+            Текущие фильтры ({{ Object.keys(currentQuery()).length }}) сохранятся под этим именем и
+            будут доступны на любом устройстве этой сессии.
+          </DialogDescription>
+        </DialogHeader>
+        <div class="space-y-2">
+          <Input
+            v-model="newViewName"
+            aria-label="Название представления"
+            placeholder="Например: Подольск — сеть"
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" class="min-h-10" @click="showSaveView = false">Отмена</Button>
+          <Button class="min-h-10" :disabled="!newViewName.trim()" @click="submitSaveView"
+            >Сохранить</Button
           >
         </DialogFooter>
       </DialogContent>

@@ -24,6 +24,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
+import { Download } from 'lucide-vue-next'
+import { downloadCsv } from '@/lib/csv'
 
 const { downtimes, incidents, sites, robots } = useDemoData()
 const route = useRoute()
@@ -194,6 +196,41 @@ function fmtDur(sec: number): string {
 function goToIncident(incidentId: string): void {
   router.push({ name: 'incident-details', params: { incidentId } })
 }
+
+function exportCsv(): void {
+  const rows = filtered.value.map((d) => [
+    incidentNumber(d.incidentId),
+    siteName(d.siteId),
+    d.zoneName ?? '',
+    robotName(d.robotId),
+    d.startedAt.slice(0, 19).replace('T', ' '),
+    d.endedAt ? d.endedAt.slice(0, 19).replace('T', ' ') : 'продолжается',
+    (d.accountableDurationSeconds / 3600).toFixed(2),
+    DOWNTIME_KIND_RU[d.kind],
+    causeLabel(causeOf(d)),
+    DOWNTIME_STATUS_RU[d.confirmationStatus],
+    d.ratePerHour,
+    d.lossRubles,
+  ])
+  downloadCsv(
+    `downtimes-${new Date().toISOString().slice(0, 10)}.csv`,
+    [
+      'Инцидент',
+      'Объект',
+      'Зона',
+      'Робот',
+      'Начало',
+      'Окончание',
+      'Часы',
+      'Характер',
+      'Причина',
+      'Статус',
+      'Ставка',
+      'Потери',
+    ],
+    rows,
+  )
+}
 </script>
 
 <template>
@@ -315,6 +352,9 @@ function goToIncident(incidentId: string): void {
       <span class="text-xs"
         >средняя {{ summary.avgHours.toFixed(1) }} ч · медианная
         {{ summary.medianHours.toFixed(1) }} ч</span
+      >
+      <Button size="sm" variant="outline" class="min-h-8 h-8" @click="exportCsv"
+        ><Download class="size-3.5 mr-1" /> Экспорт CSV</Button
       >
       <button
         v-if="summary.longestId"
