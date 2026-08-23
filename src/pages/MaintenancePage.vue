@@ -27,13 +27,21 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useRouter } from 'vue-router'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
-const { maintenance, sites, robots } = useDemoData()
+const { maintenance, sites, robots, incidents } = useDemoData()
 const router = useRouter()
 
 const filterType = ref('all')
 const filterStatus = ref('all')
+const filterSite = ref('all')
+const filterExecutor = ref('all')
+const filterQuick = ref('all')
+const searchText = ref('')
 const selected = ref<MaintenanceWork | null>(null)
+
+const executors = computed(() => [...new Set(maintenance.value.map((m) => m.executor))].sort())
 
 const STATUS_CLASS: Record<string, string> = {
   PLANNED: 'bg-muted text-muted-foreground',
@@ -49,6 +57,34 @@ const filtered = computed(() => {
   let result = maintenance.value
   if (filterType.value !== 'all') result = result.filter((m) => m.type === filterType.value)
   if (filterStatus.value !== 'all') result = result.filter((m) => m.status === filterStatus.value)
+  if (filterSite.value !== 'all') result = result.filter((m) => m.siteId === filterSite.value)
+  if (filterExecutor.value !== 'all')
+    result = result.filter((m) => m.executor === filterExecutor.value)
+  switch (filterQuick.value) {
+    case 'overdue':
+      result = result.filter((m) => isOverdue(m))
+      break
+    case 'upcoming':
+      result = result
+        .filter((m) => !m.completedAt)
+        .sort((a, b) => a.dueAt.localeCompare(b.dueAt))
+        .slice(0, 10)
+      break
+    case 'open':
+      result = result.filter((m) => !['DONE', 'RESULT_CONFIRMED', 'CANCELLED'].includes(m.status))
+      break
+    case 'incident':
+      result = result.filter((m) => m.incidentId !== null)
+      break
+    default:
+      break
+  }
+  if (searchText.value.trim()) {
+    const s = searchText.value.trim().toLowerCase()
+    result = result.filter(
+      (m) => m.title.toLowerCase().includes(s) || m.executor.toLowerCase().includes(s),
+    )
+  }
   return result
 })
 
@@ -72,6 +108,15 @@ function fmtDate(iso: string): string {
 }
 function isOverdue(m: MaintenanceWork): boolean {
   return !m.completedAt && new Date(m.dueAt) < new Date()
+}
+
+function incidentNumberOf(m: MaintenanceWork): string | null {
+  if (!m.incidentId) return null
+  return incidents.value.find((i) => i.id === m.incidentId)?.incidentNumber ?? null
+}
+
+function goIncident(m: MaintenanceWork): void {
+  if (m.incidentId) router.push({ name: 'incident-details', params: { incidentId: m.incidentId } })
 }
 
 function openWork(m: MaintenanceWork): void {
@@ -109,6 +154,24 @@ function openWork(m: MaintenanceWork): void {
       >
     </div>
 
+    <!-- Quick views -->
+    <div class="flex flex-wrap gap-2">
+      <Button
+        v-for="q in [
+          { key: 'overdue', label: 'Просроченные' },
+          { key: 'upcoming', label: 'Ближайшие' },
+          { key: 'open', label: 'Незавершённые' },
+          { key: 'incident', label: 'Связанные с инцидентами' },
+        ]"
+        :key="q.key"
+        :variant="filterQuick === q.key ? 'default' : 'outline'"
+        size="sm"
+        class="min-h-9"
+        @click="filterQuick = filterQuick === q.key ? 'all' : q.key"
+        >{{ q.label }}</Button
+      >
+    </div>
+
     <!-- Filters -->
     <div class="flex flex-wrap items-end gap-3">
       <div class="space-y-1">
@@ -122,6 +185,34 @@ function openWork(m: MaintenanceWork): void {
             }}</SelectItem>
           </SelectContent>
         </Select>
+      </div>
+      <div class="space-y-1">
+        <span class="text-xs text-muted-foreground block">Объект</span>
+        <Select v-model="filterSite" aria-label="Фильтр по объекту">
+          <SelectTrigger class="w-[170px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все</SelectItem>
+            <SelectItem v-for="s in sites" :key="s.id" :value="s.id">{{ s.name }}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="space-y-1">
+        <span class="text-xs text-muted-foreground block">Исполнитель</span>
+        <Select v-model="filterExecutor" aria-label="Фильтр по исполнителю">
+          <SelectTrigger class="w-[170px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все</SelectItem>
+            <SelectItem v-for="e in executors" :key="e" :value="e">{{ e }}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="space-y-1 flex-1 min-w-[170px]">
+        <span class="text-xs text-muted-foreground block">Поиск</span>
+        <Input
+          v-model="searchText"
+          aria-label="Поиск по работам"
+          placeholder="Название, исполнитель..."
+        />
       </div>
       <div class="space-y-1">
         <span class="text-xs text-muted-foreground block">Статус</span>
@@ -146,7 +237,8 @@ function openWork(m: MaintenanceWork): void {
               <TableHead class="py-3 px-4">Вид</TableHead>
               <TableHead class="py-3 px-4">Название</TableHead>
               <TableHead class="py-3 px-4">Робот</TableHead>
-              <TableHead class="py-3 px-4">Объект</TableHead>
+              <TableHead class="py-3 px-4">Объект</TableHead>`n
+              <TableHead class="py-3 px-4">Инцидент</TableHead>
               <TableHead class="py-3 px-4">Исполнитель</TableHead>
               <TableHead class="py-3 px-4">Срок</TableHead>
               <TableHead class="py-3 px-4">Статус</TableHead>
@@ -179,6 +271,17 @@ function openWork(m: MaintenanceWork): void {
               </TableCell>
               <TableCell class="text-xs py-3 px-4">{{ robotName(m.robotId) }}</TableCell>
               <TableCell class="text-xs py-3 px-4">{{ siteName(m.siteId) }}</TableCell>
+              <TableCell class="text-xs py-3 px-4">
+                <button
+                  v-if="m.incidentId"
+                  type="button"
+                  class="text-primary hover:underline"
+                  @click.stop="goIncident(m)"
+                >
+                  {{ incidentNumberOf(m) ?? m.incidentId }}
+                </button>
+                <span v-else class="text-muted-foreground">—</span>
+              </TableCell>
               <TableCell class="text-xs py-3 px-4">{{ m.executor }}</TableCell>
               <TableCell
                 class="text-xs py-3 px-4"
