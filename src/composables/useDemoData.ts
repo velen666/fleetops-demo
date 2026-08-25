@@ -859,6 +859,97 @@ function incidentProcessState(incidentId: string): {
   return { processRestored, robotReturned, label }
 }
 
+// ─── Сервисный бэклог: завершение ремонта и возврат робота (ТЗ §8.6) ──────
+
+function replaceMaintenance(id: string, patch: Partial<MaintenanceWork>): void {
+  const next = { ...maintenance.value.find((m) => m.id === id)!, ...patch } as MaintenanceWork
+  maintenance.value = maintenance.value.map((m) => (m.id === id ? next : m))
+  markReplaced('maintenance', id, next)
+}
+
+/**
+ * Завершить ремонт с контрольным запуском (ТЗ §6 шаг 8): работа выполнена,
+ * стоимость подтверждена (труд + запчасти + услуги). Возврат в парк —
+ * отдельная контрольная точка.
+ */
+function completeMaintenance(
+  workId: string,
+  input: {
+    result: string
+    testRunPassed: boolean
+    laborCost?: number
+    partsCost?: number
+    externalCost?: number
+  },
+  actorName: string,
+): { ok: boolean; reason?: string } {
+  const work = maintenance.value.find((m) => m.id === workId)
+  if (!work) return { ok: false, reason: 'Работа не найдена' }
+  if (work.status === 'RESULT_CONFIRMED' || work.status === 'DONE')
+    return { ok: false, reason: 'Работа уже завершена' }
+  const nowIso = new Date().toISOString()
+  replaceMaintenance(workId, {
+    status: 'DONE',
+    result: input.result,
+    testRunPassed: input.testRunPassed,
+    completedAt: nowIso,
+    laborCost: input.laborCost ?? work.laborCost,
+    partsCost: input.partsCost ?? work.partsCost,
+    externalCost: input.externalCost ?? work.externalCost,
+  })
+  // Робот проходит контрольный запуск (состояние §5.2).
+  replaceRobot(work.robotId, { fleetState: input.testRunPassed ? 'TEST_RUN' : 'IN_REPAIR' })
+  if (work.incidentId)
+    log(
+      work.incidentId,
+      'ACTION_COMPLETED',
+      `Ремонт выполнен: ${work.title}. Контрольный запуск ${input.testRunPassed ? 'пройден' : 'не пройден'}`,
+      actorName,
+      false,
+      { workId },
+    )
+  return { ok: true }
+}
+
+/**
+ * Возврат робота в парк из бэклога (ТЗ §8.6): закрывает техническую
+ * недоступность связанного инцидента, освобождает резерв, обновляет обзор.
+ */
+function returnRobotFromBacklog(
+  workId: string,
+  actorName: string,
+): { ok: boolean; reason?: string } {
+  const work = maintenance.value.find((m) => m.id === workId)
+  if (!work) return { ok: false, reason: 'Работа не найдена' }
+  if (work.returnedToParkAt) return { ok: false, reason: 'Робот уже возвращён' }
+  if (work.status !== 'DONE' && work.status !== 'RESULT_CONFIRMED')
+    return { ok: false, reason: 'Завершите ремонт с контрольным запуском' }
+  const nowIso = new Date().toISOString()
+  replaceMaintenance(workId, {
+    status: 'RESULT_CONFIRMED',
+    returnedToParkAt: nowIso,
+    testRunPassed: work.testRunPassed ?? true,
+  })
+  // Контрольная точка 2: закрыть технедоступность связанного инцидента
+  // (включая освобождение резерва и смену состояний).
+  if (work.incidentId) returnRobotToPark(work.incidentId, actorName)
+  else {
+    const robot = robots.value.find((r) => r.id === work.robotId)
+    if (robot)
+      replaceRobot(robot.id, { fleetState: 'WORKING', status: 'ACTIVE', zoneId: robot.zoneId })
+  }
+  if (work.incidentId)
+    log(
+      work.incidentId,
+      'RECOVERY',
+      `${robots.value.find((r) => r.id === work.robotId)?.name ?? 'Робот'} возвращён в парк; техническая недоступность закрыта`,
+      actorName,
+      false,
+      { workId },
+    )
+  return { ok: true }
+}
+
 function closeIncident(incidentId: string, actorName: string): { ok: boolean; reason?: string } {
   const inc = incidents.value.find((i) => i.id === incidentId)
   if (!inc) return { ok: false, reason: 'Инцидент не найден' }
@@ -1105,6 +1196,8 @@ export function useDemoData() {
     returnRobotToPark,
     incidentProcessState,
     availableBackups,
+    completeMaintenance,
+    returnRobotFromBacklog,
     addObservation,
     classifyCause,
     createServiceAction,

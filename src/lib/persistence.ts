@@ -44,6 +44,10 @@ async function withStore<T>(
   const db = await openDb()
   return new Promise<T>((resolve, reject) => {
     const tx = db.transaction(STORE, mode)
+    tx.onabort = () => {
+      console.error('[persistence] tx aborted:', tx.error)
+      reject(tx.error ?? new Error('tx aborted'))
+    }
     const req = fn(tx.objectStore(STORE))
     req.onsuccess = () => resolve(req.result as T)
     req.onerror = () => reject(req.error ?? new Error('indexedDB request failed'))
@@ -65,9 +69,12 @@ export async function loadOverlay(): Promise<OverlayData> {
 
 export async function saveOverlay(data: OverlayData): Promise<void> {
   try {
-    await withStore('readwrite', (s) => s.put(data, 'data'))
-  } catch {
-    /* см. loadOverlay */
+    // Vue reactive Proxy не подлежит structured clone (DataCloneError в IDB) —
+    // сериализуем в plain object перед записью.
+    const plain = JSON.parse(JSON.stringify(data)) as OverlayData
+    await withStore('readwrite', (s) => s.put(plain, 'data'))
+  } catch (e) {
+    console.error('[persistence] saveOverlay failed:', e)
   }
 }
 

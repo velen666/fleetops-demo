@@ -25,12 +25,15 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
 import { useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
-const { maintenance, sites, robots, incidents } = useDemoData()
+const { maintenance, sites, robots, incidents, completeMaintenance, returnRobotFromBacklog } =
+  useDemoData()
 const router = useRouter()
 
 const filterType = ref('all')
@@ -40,6 +43,14 @@ const filterExecutor = ref('all')
 const filterQuick = ref('all')
 const searchText = ref('')
 const selected = ref<MaintenanceWork | null>(null)
+const actionError = ref<string | null>(null)
+
+// Завершение ремонта (диалог)
+const showComplete = ref(false)
+const completeResult = ref('')
+const completeTestRun = ref(true)
+const completeParts = ref(0)
+const completeLabor = ref(0)
 
 const executors = computed(() => [...new Set(maintenance.value.map((m) => m.executor))].sort())
 
@@ -61,17 +72,32 @@ const filtered = computed(() => {
   if (filterExecutor.value !== 'all')
     result = result.filter((m) => m.executor === filterExecutor.value)
   switch (filterQuick.value) {
+    // Представления сервисного бэклога (ТЗ v2.0 §8.6)
+    case 'new':
+      result = result.filter((m) => ['PLANNED', 'ASSIGNED'].includes(m.status))
+      break
+    case 'diagnostics':
+      result = result.filter(
+        (m) =>
+          m.type === 'DIAGNOSTIC' && !['DONE', 'RESULT_CONFIRMED', 'CANCELLED'].includes(m.status),
+      )
+      break
+    case 'waiting_parts':
+      result = result.filter((m) => m.status === 'WAITING_PARTS')
+      break
+    case 'in_repair':
+      result = result.filter((m) => m.status === 'IN_PROGRESS')
+      break
+    case 'test_run':
+      result = result.filter((m) => m.status === 'DONE' && !m.returnedToParkAt)
+      break
     case 'overdue':
       result = result.filter((m) => isOverdue(m))
       break
-    case 'upcoming':
-      result = result
-        .filter((m) => !m.completedAt)
-        .sort((a, b) => a.dueAt.localeCompare(b.dueAt))
-        .slice(0, 10)
-      break
-    case 'open':
-      result = result.filter((m) => !['DONE', 'RESULT_CONFIRMED', 'CANCELLED'].includes(m.status))
+    case 'ready_return':
+      result = result.filter(
+        (m) => m.status === 'DONE' && m.testRunPassed === true && !m.returnedToParkAt,
+      )
       break
     case 'incident':
       result = result.filter((m) => m.incidentId !== null)
@@ -121,6 +147,57 @@ function goIncident(m: MaintenanceWork): void {
 
 function openWork(m: MaintenanceWork): void {
   selected.value = m
+  actionError.value = null
+}
+
+// Живой срез выбранной работы (обновляется после действий).
+const selectedLive = computed(
+  () => maintenance.value.find((m) => m.id === selected.value?.id) ?? null,
+)
+
+function openComplete(): void {
+  const m = selectedLive.value
+  if (!m) return
+  completeResult.value = m.result ?? ''
+  completeTestRun.value = true
+  completeParts.value = m.partsCost
+  completeLabor.value = m.laborCost
+  actionError.value = null
+  showComplete.value = true
+}
+
+function submitComplete(): void {
+  const m = selectedLive.value
+  if (!m || !completeResult.value.trim()) return
+  const res = completeMaintenance(
+    m.id,
+    {
+      result: completeResult.value.trim(),
+      testRunPassed: completeTestRun.value,
+      laborCost: completeLabor.value,
+      partsCost: completeParts.value,
+    },
+    m.executor,
+  )
+  if (!res.ok) {
+    actionError.value = res.reason ?? 'Не удалось завершить работу'
+    return
+  }
+  showComplete.value = false
+}
+
+function submitReturn(): void {
+  const m = selectedLive.value
+  if (!m) return
+  const res = returnRobotFromBacklog(m.id, m.executor)
+  if (!res.ok) {
+    actionError.value = res.reason ?? 'Не удалось вернуть робота'
+    return
+  }
+}
+
+function totalCost(m: MaintenanceWork): number {
+  return m.laborCost + m.partsCost + m.externalCost
 }
 </script>
 
@@ -154,13 +231,17 @@ function openWork(m: MaintenanceWork): void {
       >
     </div>
 
-    <!-- Quick views -->
+    <!-- Quick views (ТЗ v2.0 §8.6) -->
     <div class="flex flex-wrap gap-2">
       <Button
         v-for="q in [
-          { key: 'overdue', label: 'Просроченные' },
-          { key: 'upcoming', label: 'Ближайшие' },
-          { key: 'open', label: 'Незавершённые' },
+          { key: 'new', label: 'Новые' },
+          { key: 'diagnostics', label: 'Диагностика' },
+          { key: 'waiting_parts', label: 'Ожидает запчасти' },
+          { key: 'in_repair', label: 'В ремонте' },
+          { key: 'test_run', label: 'Контрольный запуск' },
+          { key: 'overdue', label: 'Просрочено' },
+          { key: 'ready_return', label: 'Готов к возврату' },
           { key: 'incident', label: 'Связанные с инцидентами' },
         ]"
         :key="q.key"
@@ -237,12 +318,12 @@ function openWork(m: MaintenanceWork): void {
               <TableHead class="py-3 px-4">Вид</TableHead>
               <TableHead class="py-3 px-4">Название</TableHead>
               <TableHead class="py-3 px-4">Робот</TableHead>
-              <TableHead class="py-3 px-4">Объект</TableHead>`n
+              <TableHead class="py-3 px-4">Объект</TableHead>
               <TableHead class="py-3 px-4">Инцидент</TableHead>
               <TableHead class="py-3 px-4">Исполнитель</TableHead>
-              <TableHead class="py-3 px-4">Срок</TableHead>
+              <TableHead class="py-3 px-4">Срок возврата</TableHead>
               <TableHead class="py-3 px-4">Статус</TableHead>
-              <TableHead class="py-3 px-4">Результат</TableHead>
+              <TableHead class="py-3 px-4">Стоимость</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -283,20 +364,23 @@ function openWork(m: MaintenanceWork): void {
                 <span v-else class="text-muted-foreground">—</span>
               </TableCell>
               <TableCell class="text-xs py-3 px-4">{{ m.executor }}</TableCell>
-              <TableCell
-                class="text-xs py-3 px-4"
-                :class="isOverdue(m) ? 'text-destructive font-medium' : ''"
-              >
+              <TableCell class="text-xs py-3 px-4">
                 {{ fmtDate(m.dueAt) }}
                 <span v-if="isOverdue(m)" class="block text-destructive">просрочено</span>
+                <span v-if="m.returnedToParkAt" class="block text-success">возвращён в парк</span>
               </TableCell>
               <TableCell class="py-3 px-4">
                 <span class="text-xs rounded px-1.5 py-0.5" :class="STATUS_CLASS[m.status]">{{
                   MAINTENANCE_STATUS_RU[m.status]
                 }}</span>
+                <span
+                  v-if="m.testRunPassed"
+                  class="ml-1 text-xs rounded px-1.5 py-0.5 bg-success/15 text-success"
+                  >контр. запуск</span
+                >
               </TableCell>
-              <TableCell class="text-xs py-3 px-4 max-w-[200px]">
-                <p v-if="m.result" class="truncate text-muted-foreground">{{ m.result }}</p>
+              <TableCell class="text-xs py-3 px-4 tabular-nums">
+                <span v-if="totalCost(m) > 0">{{ totalCost(m).toLocaleString('ru-RU') }} ₽</span>
                 <span v-else class="text-muted-foreground">—</span>
               </TableCell>
             </TableRow>
@@ -315,44 +399,103 @@ function openWork(m: MaintenanceWork): void {
             {{ MAINTENANCE_STATUS_RU[selected?.status ?? ''] }}</DialogDescription
           >
         </DialogHeader>
-        <div v-if="selected" class="space-y-4 text-sm">
+        <div v-if="selectedLive" class="space-y-4 text-sm">
           <div class="grid grid-cols-2 gap-3">
             <div>
               <p class="text-xs text-muted-foreground">Робот</p>
-              <p>{{ robotName(selected.robotId) }}</p>
+              <p>{{ robotName(selectedLive.robotId) }}</p>
             </div>
             <div>
               <p class="text-xs text-muted-foreground">Объект</p>
-              <p>{{ siteName(selected.siteId) }}</p>
+              <p>{{ siteName(selectedLive.siteId) }}</p>
             </div>
             <div>
               <p class="text-xs text-muted-foreground">Исполнитель</p>
-              <p>{{ selected.executor }}</p>
+              <p>{{ selectedLive.executor }}</p>
             </div>
             <div>
-              <p class="text-xs text-muted-foreground">Срок</p>
-              <p :class="isOverdue(selected) ? 'text-destructive' : ''">
-                {{ fmtDate(selected.dueAt) }}
+              <p class="text-xs text-muted-foreground">Целевой срок возврата</p>
+              <p :class="isOverdue(selectedLive) ? 'text-destructive' : ''">
+                {{ fmtDate(selectedLive.dueAt) }}
               </p>
             </div>
-            <div v-if="selected.completedAt">
-              <p class="text-xs text-muted-foreground">Выполнено</p>
-              <p>{{ fmtDate(selected.completedAt) }}</p>
+            <div v-if="selectedLive.completedAt">
+              <p class="text-xs text-muted-foreground">Ремонт завершён</p>
+              <p>{{ fmtDate(selectedLive.completedAt) }}</p>
+            </div>
+            <div v-if="selectedLive.returnedToParkAt">
+              <p class="text-xs text-muted-foreground">Возвращён в парк</p>
+              <p class="text-success">{{ fmtDate(selectedLive.returnedToParkAt) }}</p>
             </div>
           </div>
-          <div v-if="selected.result" class="border-t pt-3">
-            <p class="text-xs text-muted-foreground mb-1">Результат</p>
-            <p>{{ selected.result }}</p>
+          <div v-if="selectedLive.problem" class="border-t pt-3">
+            <p class="text-xs text-muted-foreground mb-1">Проблема</p>
+            <p>{{ selectedLive.problem }}</p>
           </div>
-          <div v-if="selected.incidentId" class="border-t pt-3">
+          <div v-if="selectedLive.result" class="border-t pt-3">
+            <p class="text-xs text-muted-foreground mb-1">Результат</p>
+            <p>{{ selectedLive.result }}</p>
+            <p
+              v-if="selectedLive.testRunPassed !== null"
+              class="text-xs mt-1"
+              :class="selectedLive.testRunPassed ? 'text-success' : 'text-destructive'"
+            >
+              Контрольный запуск: {{ selectedLive.testRunPassed ? 'пройден' : 'не пройден' }}
+            </p>
+          </div>
+          <div
+            v-if="totalCost(selectedLive) > 0"
+            class="border-t pt-3 grid grid-cols-3 gap-2 text-xs"
+          >
+            <div>
+              <p class="text-muted-foreground">Труд</p>
+              <p class="tabular-nums">{{ selectedLive.laborCost.toLocaleString('ru-RU') }} ₽</p>
+            </div>
+            <div>
+              <p class="text-muted-foreground">Запчасти</p>
+              <p class="tabular-nums">{{ selectedLive.partsCost.toLocaleString('ru-RU') }} ₽</p>
+            </div>
+            <div>
+              <p class="text-muted-foreground">Итого ремонт</p>
+              <p class="tabular-nums font-semibold">
+                {{ totalCost(selectedLive).toLocaleString('ru-RU') }} ₽
+              </p>
+            </div>
+          </div>
+          <p v-if="actionError" class="text-xs text-destructive border-t pt-3">{{ actionError }}</p>
+          <!-- Действия бэклога (ТЗ §8.6): завершить ремонт / вернуть в парк -->
+          <div
+            v-if="
+              !['RESULT_CONFIRMED', 'CANCELLED'].includes(selectedLive.status) ||
+              !selectedLive.returnedToParkAt
+            "
+            class="border-t pt-3 flex flex-wrap gap-2"
+          >
+            <Button
+              v-if="!['DONE', 'RESULT_CONFIRMED'].includes(selectedLive.status)"
+              size="sm"
+              class="min-h-9"
+              @click="openComplete"
+            >
+              Завершить ремонт с контрольным запуском
+            </Button>
+            <Button
+              v-if="selectedLive.status === 'DONE' && !selectedLive.returnedToParkAt"
+              size="sm"
+              @click="submitReturn"
+            >
+              Вернуть робота в парк
+            </Button>
+          </div>
+          <div v-if="selectedLive.incidentId" class="border-t pt-3">
             <button
               class="text-primary hover:underline text-sm"
               @click="
                 () => {
-                  if (!selected?.incidentId) return
+                  if (!selectedLive?.incidentId) return
                   router.push({
                     name: 'incident-details',
-                    params: { incidentId: selected.incidentId },
+                    params: { incidentId: selectedLive.incidentId },
                   })
                   selected = null
                 }
@@ -362,6 +505,71 @@ function openWork(m: MaintenanceWork): void {
             </button>
           </div>
         </div>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Диалог: завершение ремонта (контрольный запуск + стоимость) -->
+    <Dialog :open="showComplete" @update:open="(v) => (showComplete = v)">
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Завершить ремонт</DialogTitle>
+          <DialogDescription>
+            Зафиксируйте результат, контрольный запуск и стоимость. Возврат робота в парк —
+            отдельная контрольная точка после этой операции.
+          </DialogDescription>
+        </DialogHeader>
+        <div class="space-y-3">
+          <div class="space-y-1">
+            <span class="text-xs text-muted-foreground block">Результат (минимум 20 символов)</span>
+            <Textarea
+              v-model="completeResult"
+              aria-label="Результат ремонта"
+              placeholder="Например: приводной модуль заменён, крепёж затянут моментом, тестовый маршрут пройден без ошибок"
+            />
+          </div>
+          <label class="flex items-center gap-2 text-sm">
+            <input
+              v-model="completeTestRun"
+              type="checkbox"
+              aria-label="Контрольный запуск пройден"
+            />
+            Контрольный запуск пройден
+          </label>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="space-y-1">
+              <span class="text-xs text-muted-foreground block">Труд, ₽</span>
+              <Input
+                v-model.number="completeLabor"
+                type="number"
+                min="0"
+                aria-label="Стоимость труда"
+              />
+            </div>
+            <div class="space-y-1">
+              <span class="text-xs text-muted-foreground block">Запчасти, ₽</span>
+              <Input
+                v-model.number="completeParts"
+                type="number"
+                min="0"
+                aria-label="Стоимость запчастей"
+              />
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" @click="showComplete = false">Отмена</Button>
+          <Button
+            :disabled="completeResult.trim().length < 20"
+            :title="
+              completeResult.trim().length < 20
+                ? `Минимум 20 символов · осталось ${20 - completeResult.trim().length}`
+                : ''
+            "
+            @click="submitComplete"
+          >
+            Завершить ремонт
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   </div>
