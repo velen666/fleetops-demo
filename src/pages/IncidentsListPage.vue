@@ -37,7 +37,17 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 
-const { incidents, sites, robots, createManualIncident, nextStep, resetDemo } = useDemoData()
+const {
+  incidents,
+  sites,
+  robots,
+  downtimes,
+  maintenance,
+  substitutions,
+  createManualIncident,
+  nextStep,
+  resetDemo,
+} = useDemoData()
 const auth = useAuthStore()
 
 const STATUS_RU = INCIDENT_STATUS_RU
@@ -75,12 +85,51 @@ interface Queue {
   filter: (i: (typeof incidents.value)[0]) => boolean
 }
 
+// Быстрые представления (ТЗ v2.0 §8.3): каждое — только подходящие инциденты.
+const openTech = (i: (typeof incidents.value)[0]) =>
+  downtimes.value.some(
+    (d) =>
+      d.incidentId === i.id &&
+      d.intervalType === 'TECHNICAL_UNAVAILABLE' &&
+      d.intervalState === 'OPEN',
+  )
+const processRestored = (i: (typeof incidents.value)[0]) => {
+  const sub = substitutions.value.find((s) => s.incidentId === i.id)
+  if (sub) return sub.processRestoredAt != null
+  const impact = downtimes.value.find(
+    (d) => d.incidentId === i.id && d.intervalType === 'OPERATIONAL_IMPACT',
+  )
+  return !impact || impact.intervalState === 'CLOSED'
+}
+const inService = (robotId: string | null) =>
+  !!robotId &&
+  maintenance.value.some(
+    (m) => m.robotId === robotId && ['IN_PROGRESS', 'ASSIGNED', 'WAITING_PARTS'].includes(m.status),
+  )
+
 const queues: Queue[] = [
-  { key: 'needs_review', label: 'Требуют разбора', filter: (i) => i.status === 'OPEN' },
+  {
+    key: 'needs_review',
+    label: 'Требует разбора',
+    filter: (i) => i.status === 'OPEN' || (i.status !== 'CLOSED' && !i.safetyConfirmedAt),
+  },
   {
     key: 'no_coordinator',
     label: 'Без координатора',
     filter: (i) => i.status !== 'CLOSED' && !i.coordinatorName,
+  },
+  {
+    key: 'need_substitution',
+    label: 'Нужно замещение',
+    filter: (i) =>
+      i.status !== 'CLOSED' &&
+      openTech(i) &&
+      !substitutions.value.some((s) => s.incidentId === i.id),
+  },
+  {
+    key: 'process_not_restored',
+    label: 'Процесс не восстановлен',
+    filter: (i) => i.status !== 'CLOSED' && !processRestored(i),
   },
   {
     key: 'cause_unconfirmed',
@@ -88,24 +137,41 @@ const queues: Queue[] = [
     filter: (i) => i.status !== 'CLOSED' && i.causeMaturity !== 'FINAL',
   },
   {
-    key: 'downtime_unconfirmed',
-    label: 'Простой не подтверждён',
-    filter: (i) => i.status !== 'CLOSED' && i.hasDowntime && !i.downtimeConfirmed,
+    key: 'in_service',
+    label: 'В сервисе / ремонте',
+    filter: (i) => i.status !== 'CLOSED' && openTech(i) && inService(i.robotId),
   },
   {
-    key: 'waiting_service',
-    label: 'Ожидают сервисных работ',
-    filter: (i) => i.status === 'WAITING',
+    key: 'waiting_parts',
+    label: 'Ожидает запчасти',
+    filter: (i) =>
+      i.status !== 'CLOSED' &&
+      !!i.robotId &&
+      maintenance.value.some((m) => m.robotId === i.robotId && m.status === 'WAITING_PARTS'),
   },
   {
-    key: 'need_recovery',
-    label: 'Нужно подтвердить восстановление',
-    filter: (i) => i.status !== 'CLOSED' && !i.recoveryConfirmed,
+    key: 'ready_return',
+    label: 'Готов к возврату',
+    filter: (i) =>
+      i.status !== 'CLOSED' &&
+      openTech(i) &&
+      i.recoveryConfirmed &&
+      maintenance.value.some(
+        (m) =>
+          m.robotId === i.robotId &&
+          (m.status === 'DONE' || (m.status === 'IN_PROGRESS' && m.testRunPassed === true)),
+      ),
   },
   {
     key: 'ready_to_close',
-    label: 'Готовы к закрытию',
-    filter: (i) => i.status === 'READY_TO_CLOSE',
+    label: 'Готов к закрытию',
+    filter: (i) =>
+      i.status === 'READY_TO_CLOSE' ||
+      (i.status !== 'CLOSED' &&
+        !openTech(i) &&
+        processRestored(i) &&
+        i.causeMaturity === 'FINAL' &&
+        i.recoveryConfirmed),
   },
   { key: 'all', label: 'Все', filter: () => true },
 ]

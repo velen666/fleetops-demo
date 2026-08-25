@@ -286,12 +286,16 @@ const analytics = computed(() => {
 
 export type NextActionKind =
   | 'ASSIGN'
+  | 'SECURE'
+  | 'SUBSTITUTE'
+  | 'ENGAGE'
   | 'CLASSIFY'
   | 'REFINE_CAUSE'
   | 'CONFIRM_CAUSE'
   | 'CREATE_ACTION'
   | 'COMPLETE_ACTION'
   | 'CONFIRM_RECOVERY'
+  | 'RETURN_ROBOT'
   | 'DECIDE_DOWNTIME'
   | 'CLOSE'
   | 'DONE'
@@ -632,12 +636,240 @@ function decideDowntime(
   )
 }
 
+// ─── Замещение и две контрольные точки (ТЗ v2.0 §5.3/§6) ──────────────────
+
+function confirmSafety(incidentId: string, comment: string, actorName: string): void {
+  replaceIncident(incidentId, { safetyConfirmedAt: new Date().toISOString() })
+  log(
+    incidentId,
+    'SAFETY',
+    `Безопасность обеспечена: зона ограждена, робот выведен с критического пути${comment ? ` — ${comment}` : ''}`,
+    actorName,
+    false,
+  )
+}
+
+function availableBackups(siteId: string): Robot[] {
+  return robots.value.filter((r) => r.siteId === siteId && r.fleetState === 'RESERVE')
+}
+
+function substitutionOf(incidentId: string): Substitution | undefined {
+  return substitutions.value.find((s) => s.incidentId === incidentId)
+}
+
+function impactOf(incidentId: string): Downtime | undefined {
+  return downtimes.value.find(
+    (d) => d.incidentId === incidentId && d.intervalType === 'OPERATIONAL_IMPACT',
+  )
+}
+
+function techOf(incidentId: string): Downtime | undefined {
+  return downtimes.value.find(
+    (d) => d.incidentId === incidentId && d.intervalType === 'TECHNICAL_UNAVAILABLE',
+  )
+}
+
+function replaceRobot(id: string, patch: Partial<Robot>): void {
+  const next = { ...robots.value.find((r) => r.id === id)!, ...patch } as Robot
+  robots.value = robots.value.map((r) => (r.id === id ? next : r))
+  markReplaced('robots', id, next)
+}
+
+/** Назначить резерв (ТЗ §6 шаг 5): фиксирует решение, не команды движения. */
+function assignSubstitution(
+  incidentId: string,
+  backupRobotId: string,
+  actorName: string,
+): { ok: boolean; reason?: string } {
+  const inc = incidents.value.find((i) => i.id === incidentId)
+  if (!inc) return { ok: false, reason: 'Инцидент не найден' }
+  if (substitutionOf(incidentId)) return { ok: false, reason: 'Замещение уже назначено' }
+  const backup = robots.value.find((r) => r.id === backupRobotId)
+  if (!backup) return { ok: false, reason: 'Резервный робот не найден' }
+  if (backup.siteId !== inc.siteId) return { ok: false, reason: 'Резерв другого объекта' }
+  if (backup.fleetState !== 'RESERVE') return { ok: false, reason: 'Робот не находится в резерве' }
+  const damaged = robots.value.find((r) => r.id === inc.robotId)
+  if (!damaged) return { ok: false, reason: 'Повреждённый робот не найден' }
+  const zone = zones.value.find((z) => z.siteId === inc.siteId && inc.zoneName?.startsWith(z.code))
+  const sub: Substitution = {
+    id: `sub-u-${Date.now().toString(36)}`,
+    incidentId,
+    siteId: inc.siteId,
+    zoneId: zone?.id ?? '',
+    damagedRobotId: damaged.id,
+    backupRobotId: backup.id,
+    originalTask: inc.description.match(/M-\d+/)?.[0] ?? 'текущее задание',
+    newTask: 'продолжение задания резервом',
+    requestedAt: new Date().toISOString(),
+    assignedAt: new Date().toISOString(),
+    engagedAt: null,
+    processRestoredAt: null,
+    confirmedBy: null,
+    authorName: actorName,
+  }
+  substitutions.value = [...substitutions.value, sub]
+  markAppended('substitutions', sub)
+  // Повреждённый — в вывод/диагностику; резерв следует в зону (состояния §5.2).
+  replaceRobot(damaged.id, { fleetState: 'DIAGNOSTICS', status: 'MAINTENANCE', zoneId: null })
+  replaceRobot(backup.id, { fleetState: 'ASSIGNED_REPLACE', zoneId: zone?.id ?? backup.zoneId })
+  log(
+    incidentId,
+    'SUBSTITUTION',
+    `Резерв ${backup.name} назначен в зону ${zone?.code ?? inc.zoneName}; ${damaged.name} выведен с критического пути`,
+    actorName,
+    false,
+    { backupRobotId, damagedRobotId: damaged.id },
+  )
+  return { ok: true }
+}
+
+/**
+ * Ввод резерва = контрольная точка «Процесс восстановлен» (ТЗ §6 шаг 6):
+ * закрывает операционное влияние (начисление потерь прекращается).
+ */
+function engageBackup(incidentId: string, actorName: string): { ok: boolean; reason?: string } {
+  const inc = incidents.value.find((i) => i.id === incidentId)
+  const sub = substitutionOf(incidentId)
+  if (!inc || !sub) return { ok: false, reason: 'Замещение не назначено' }
+  if (sub.engagedAt) return { ok: false, reason: 'Резерв уже введён' }
+  const nowIso = new Date().toISOString()
+  const next: Substitution = {
+    ...sub,
+    engagedAt: nowIso,
+    processRestoredAt: nowIso,
+    confirmedBy: actorName,
+  }
+  substitutions.value = substitutions.value.map((s) => (s.id === sub.id ? next : s))
+  markReplaced('substitutions', sub.id, next)
+  replaceRobot(sub.backupRobotId, { fleetState: 'WORKING' })
+  // Операционное влияние закрывается на момент ввода резерва.
+  const impact = impactOf(incidentId)
+  if (impact && impact.intervalState === 'OPEN') {
+    const seconds = Math.max(
+      60,
+      Math.round((Date.parse(nowIso) - Date.parse(impact.startedAt)) / 1000),
+    )
+    const loss = Math.round((seconds / 3600) * impact.ratePerHour)
+    replaceDowntime(impact.id, {
+      confirmationStatus: 'CONFIRMED',
+      confirmedBy: actorName,
+      confirmedAt: nowIso,
+      endedAt: nowIso,
+      intervalState: 'CLOSED',
+      calendarDurationSeconds: seconds,
+      accountableDurationSeconds: seconds,
+      lossRubles: loss,
+      impact: {
+        backupRobotId: sub.backupRobotId,
+        compensation: 'BACKUP_ROBOT',
+        adjustmentBasis: 'Мощность зоны восстановлена резервом',
+      },
+    })
+    recomputeIncidentEconomics(incidentId)
+    log(
+      incidentId,
+      'SUBSTITUTION',
+      `Резерв принял задание; мощность зоны восстановлена. Операционное влияние: ${Math.round(seconds / 60)} мин × ${impact.ratePerHour.toLocaleString('ru-RU')} ₽/ч = ${loss.toLocaleString('ru-RU')} ₽`,
+      'WMS',
+      true,
+      { engagedAt: nowIso },
+    )
+  }
+  log(
+    incidentId,
+    'SUBSTITUTION',
+    'Контрольная точка «Процесс восстановлен» подтверждена',
+    actorName,
+    false,
+  )
+  return { ok: true }
+}
+
+/**
+ * Контрольная точка «Робот возвращён в парк» (ТЗ §6 шаг 9): закрывает
+ * техническую недоступность, возвращает резерв в пул.
+ */
+function returnRobotToPark(
+  incidentId: string,
+  actorName: string,
+): { ok: boolean; reason?: string } {
+  const inc = incidents.value.find((i) => i.id === incidentId)
+  if (!inc || !inc.robotId) return { ok: false, reason: 'Инцидент не найден' }
+  const tech = techOf(incidentId)
+  if (tech && tech.intervalState === 'CLOSED')
+    return { ok: false, reason: 'Робот уже возвращён в парк' }
+  const nowIso = new Date().toISOString()
+  if (tech) {
+    const seconds = Math.max(
+      60,
+      Math.round((Date.parse(nowIso) - Date.parse(tech.startedAt)) / 1000),
+    )
+    replaceDowntime(tech.id, {
+      confirmationStatus: 'CONFIRMED',
+      confirmedBy: actorName,
+      confirmedAt: nowIso,
+      endedAt: nowIso,
+      intervalState: 'CLOSED',
+      calendarDurationSeconds: seconds,
+      accountableDurationSeconds: seconds,
+    })
+  }
+  const robot = robots.value.find((r) => r.id === inc.robotId)
+  if (robot) {
+    const homeZone =
+      zones.value.find((z) => z.siteId === robot.siteId && robot.zoneName?.startsWith(z.code))
+        ?.id ?? robot.zoneId
+    replaceRobot(robot.id, { fleetState: 'WORKING', status: 'ACTIVE', zoneId: homeZone })
+  }
+  const sub = substitutionOf(incidentId)
+  if (sub) {
+    const backup = robots.value.find((r) => r.id === sub.backupRobotId)
+    if (backup && backup.fleetState === 'WORKING')
+      replaceRobot(sub.backupRobotId, { fleetState: 'RESERVE', zoneId: null })
+  }
+  log(
+    incidentId,
+    'RECOVERY',
+    `Контрольная точка «Робот возвращён в парк»: ${robot?.name ?? 'робот'} прошёл ремонт и контрольный запуск; техническая недоступность закрыта`,
+    actorName,
+    false,
+  )
+  return { ok: true }
+}
+
+/** Состояние «Процесс восстановлен, сервис продолжается» (ТЗ §5.3). */
+function incidentProcessState(incidentId: string): {
+  processRestored: boolean
+  robotReturned: boolean
+  label: string
+} {
+  const inc = incidents.value.find((i) => i.id === incidentId)
+  if (!inc) return { processRestored: false, robotReturned: false, label: '—' }
+  const sub = substitutionOf(incidentId)
+  const impact = impactOf(incidentId)
+  const tech = techOf(incidentId)
+  const processRestored =
+    sub?.processRestoredAt != null || (impact?.intervalState ?? 'CLOSED') === 'CLOSED'
+  const robotReturned = !tech || tech.intervalState === 'CLOSED'
+  let label = 'Процесс не восстановлен'
+  if (processRestored && !robotReturned && inc.status !== 'CLOSED')
+    label = 'Процесс восстановлен, сервис продолжается'
+  else if (processRestored && robotReturned) label = 'Процесс восстановлен, робот в парке'
+  else if (inc.status === 'CLOSED') label = 'Закрыт'
+  return { processRestored, robotReturned, label }
+}
+
 function closeIncident(incidentId: string, actorName: string): { ok: boolean; reason?: string } {
   const inc = incidents.value.find((i) => i.id === incidentId)
   if (!inc) return { ok: false, reason: 'Инцидент не найден' }
+  if (!inc.safetyConfirmedAt) return { ok: false, reason: 'Безопасность зоны не подтверждена' }
   if (inc.causeMaturity !== 'FINAL')
     return { ok: false, reason: 'Финальная причина не подтверждена' }
   if (!inc.recoveryConfirmed) return { ok: false, reason: 'Восстановление не подтверждено' }
+  // Раздельные подтверждения (ТЗ §8.4): обе контрольные точки обязательны.
+  const state = incidentProcessState(incidentId)
+  if (!state.processRestored) return { ok: false, reason: 'Процесс не восстановлен' }
+  if (!state.robotReturned) return { ok: false, reason: 'Робот не возвращён в парк' }
   const dt = downtimeOf(incidentId)
   const dtDecided = !dt || ['CONFIRMED', 'ADJUSTED', 'REJECTED'].includes(dt.confirmationStatus)
   if (!dtDecided) return { ok: false, reason: 'Решение по простою не принято' }
@@ -678,6 +910,23 @@ function nextStep(incidentId: string): NextStep | null {
   const owner = inc.coordinatorName ?? ''
   if (!inc.coordinatorId)
     return { kind: 'ASSIGN', label: 'Назначить координатора', owner: 'Диспетчер' }
+  // Вертикальный путь (ТЗ v2.0 §6): безопасность → резерв → ввод → причина → сервис → возврат.
+  if (!inc.safetyConfirmedAt)
+    return { kind: 'SECURE', label: 'Обеспечить безопасность зоны', owner }
+  const sub = substitutionOf(incidentId)
+  const tech = techOf(incidentId)
+  const techOpen = tech?.intervalState === 'OPEN'
+  if (techOpen && !sub && availableBackups(inc.siteId).length > 0)
+    return { kind: 'SUBSTITUTE', label: 'Назначить резервный робот', owner }
+  if (sub && !sub.engagedAt) {
+    const backupName =
+      robots.value.find((r) => r.id === sub.backupRobotId)?.name ?? sub.backupRobotId
+    return {
+      kind: 'ENGAGE',
+      label: `Подтвердить ввод резерва ${backupName}`,
+      owner,
+    }
+  }
   if (inc.causeMaturity === 'NONE')
     return { kind: 'CLASSIFY', label: 'Указать предварительную причину', owner }
   if (inc.causeMaturity === 'PRIMARY')
@@ -701,6 +950,8 @@ function nextStep(incidentId: string): NextStep | null {
       label: 'Подтвердить восстановление и контрольный запуск',
       owner,
     }
+  // Возврат робота в парк — до закрытия (ТЗ §5.3).
+  if (techOpen) return { kind: 'RETURN_ROBOT', label: 'Вернуть робота в парк', owner }
   const dt = downtimeOf(incidentId)
   if (dt && !['CONFIRMED', 'ADJUSTED', 'REJECTED'].includes(dt.confirmationStatus)) {
     return { kind: 'DECIDE_DOWNTIME', label: 'Принять решение по простою', owner }
@@ -745,6 +996,7 @@ function createManualIncident(input: ManualIncidentInput): Incident {
     coordinatorName: null,
     causeCode: null,
     causeMaturity: 'NONE',
+    safetyConfirmedAt: null,
     hasDowntime: input.hasDowntime ?? true,
     downtimeConfirmed: false,
     recoveryConfirmed: false,
@@ -847,6 +1099,12 @@ export function useDemoData() {
     // рабочий сценарий
     overlayReady,
     assignCoordinator,
+    confirmSafety,
+    assignSubstitution,
+    engageBackup,
+    returnRobotToPark,
+    incidentProcessState,
+    availableBackups,
     addObservation,
     classifyCause,
     createServiceAction,

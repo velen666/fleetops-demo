@@ -149,6 +149,8 @@ export interface Incident {
   readonly hasDowntime: boolean
   readonly downtimeConfirmed: boolean
   readonly recoveryConfirmed: boolean
+  /** Подтверждение безопасности зоны (ТЗ v2.0 §6 шаг 4). */
+  readonly safetyConfirmedAt: string | null
   readonly downtimeSeconds: number
   readonly lossRubles: number
   readonly reactionSlaSeconds: number | null

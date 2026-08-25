@@ -3,7 +3,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useDemoData } from '@/composables/useDemoData'
 import { useAuthStore } from '@/stores/auth'
 import { computed, ref } from 'vue'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ArrowLeft, Bot, MapPin, User, Clock, ChevronRight } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import {
@@ -56,7 +56,14 @@ const {
   causeClassifications,
   sites,
   robots,
+  substitutions,
   assignCoordinator,
+  confirmSafety,
+  assignSubstitution,
+  engageBackup,
+  returnRobotToPark,
+  incidentProcessState,
+  availableBackups,
   addObservation,
   classifyCause,
   createServiceAction,
@@ -93,6 +100,75 @@ const incidentCause = computed(() =>
 const step = computed(() => (incident.value ? nextStep(incident.value.id) : null))
 const canClose = computed(() => (incident.value ? readyToClose(incident.value.id) : false))
 const actorName = computed(() => auth.user?.name ?? 'Демо-пользователь')
+
+// ─── Замещение и две контрольные точки (ТЗ v2.0 §5.3/§8.4) ────────────────
+
+const substitution = computed(() =>
+  substitutions.value.find((s) => s.incidentId === incidentId.value),
+)
+const impactInterval = computed(() =>
+  downtimes.value.find(
+    (d) => d.incidentId === incidentId.value && d.intervalType === 'OPERATIONAL_IMPACT',
+  ),
+)
+const techInterval = computed(() =>
+  downtimes.value.find(
+    (d) => d.incidentId === incidentId.value && d.intervalType === 'TECHNICAL_UNAVAILABLE',
+  ),
+)
+const processState = computed(() =>
+  incident.value
+    ? {
+        ...incidentProcessState(incident.value.id),
+        technicallyOpen: techInterval.value?.intervalState === 'OPEN',
+      }
+    : { processRestored: false, robotReturned: true, label: '—', technicallyOpen: false },
+)
+const canSubstitute = computed(
+  () =>
+    !!incident.value &&
+    processState.value.technicallyOpen &&
+    !substitution.value &&
+    !!incident.value.robotId,
+)
+const availableBackupsList = computed(() =>
+  incident.value ? availableBackups(incident.value.siteId) : [],
+)
+
+const showSafety = ref(false)
+const showSubstitution = ref(false)
+const safetyComment = ref('')
+const subBackupId = ref('')
+const subError = ref<string | null>(null)
+
+function submitSafety(): void {
+  if (!incident.value) return
+  confirmSafety(incident.value.id, safetyComment.value.trim(), actorName.value)
+  safetyComment.value = ''
+  showSafety.value = false
+}
+
+function submitSubstitution(): void {
+  if (!incident.value || !subBackupId.value) return
+  const res = assignSubstitution(incident.value.id, subBackupId.value, actorName.value)
+  if (!res.ok) {
+    subError.value = res.reason ?? 'Не удалось назначить резерв'
+    return
+  }
+  subError.value = null
+  subBackupId.value = ''
+  showSubstitution.value = false
+}
+
+function submitEngage(): void {
+  if (!incident.value) return
+  engageBackup(incident.value.id, actorName.value)
+}
+
+function submitReturn(): void {
+  if (!incident.value) return
+  returnRobotToPark(incident.value.id, actorName.value)
+}
 
 function siteName(id: string): string {
   return sites.value.find((s) => s.id === id)?.name ?? id
@@ -332,6 +408,41 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
               Добавить наблюдение
             </Button>
             <Button
+              v-if="!incident.safetyConfirmedAt"
+              size="sm"
+              class="min-h-9"
+              @click="showSafety = true"
+            >
+              Обеспечить безопасность
+            </Button>
+            <Button
+              v-if="
+                canSubstitute && auth.can('substitutions.create') && availableBackupsList.length > 0
+              "
+              size="sm"
+              class="min-h-9"
+              @click="showSubstitution = true"
+            >
+              Назначить резерв
+            </Button>
+            <Button
+              v-if="substitution && !substitution.engagedAt"
+              size="sm"
+              class="min-h-9"
+              @click="submitEngage"
+            >
+              Подтвердить ввод резерва
+            </Button>
+            <Button
+              v-if="processState.technicallyOpen && processState.processRestored"
+              size="sm"
+              variant="outline"
+              class="min-h-9"
+              @click="submitReturn"
+            >
+              Вернуть робота в парк
+            </Button>
+            <Button
               v-if="auth.can('causes.classify')"
               size="sm"
               variant="outline"
@@ -430,6 +541,134 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
         >
           Переоткрыть
         </Button>
+      </CardContent>
+    </Card>
+
+    <!-- Замещение и восстановление процесса (ТЗ v2.0 §8.4) -->
+    <Card
+      v-if="substitution || techInterval || impactInterval"
+      :class="
+        processState.processRestored && !processState.robotReturned ? 'border-warning/40' : ''
+      "
+    >
+      <CardHeader class="pb-2"
+        ><CardTitle class="text-base flex flex-wrap items-center gap-2">
+          Замещение и восстановление процесса
+          <span
+            class="rounded px-2 py-0.5 text-xs font-medium"
+            :class="
+              processState.processRestored && !processState.robotReturned
+                ? 'bg-warning/15 text-warning'
+                : processState.robotReturned
+                  ? 'bg-success/15 text-success'
+                  : 'bg-destructive/15 text-destructive'
+            "
+          >
+            {{ processState.label }}
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent class="space-y-4">
+        <!-- Контрольные точки -->
+        <div class="grid gap-3 md:grid-cols-2">
+          <div
+            class="rounded-lg border p-3"
+            :class="processState.processRestored ? 'border-success/40' : 'border-destructive/40'"
+          >
+            <p class="text-xs text-muted-foreground">Контрольная точка 1</p>
+            <p class="text-sm font-medium">«Процесс восстановлен»</p>
+            <p v-if="processState.processRestored" class="text-xs text-success mt-1">
+              {{
+                substitution?.processRestoredAt
+                  ? fmtTime(substitution.processRestoredAt)
+                  : 'подтверждено'
+              }}
+              — начисление потерь процесса прекращено
+            </p>
+            <p v-else class="text-xs text-destructive mt-1">
+              Мощность зоны не восстановлена — потери продолжают начисляться
+            </p>
+          </div>
+          <div
+            class="rounded-lg border p-3"
+            :class="processState.robotReturned ? 'border-success/40' : 'border-warning/40'"
+          >
+            <p class="text-xs text-muted-foreground">Контрольная точка 2</p>
+            <p class="text-sm font-medium">«Робот возвращён в парк»</p>
+            <p v-if="processState.robotReturned" class="text-xs text-success mt-1">
+              Техническая недоступность закрыта
+            </p>
+            <p v-else class="text-xs text-warning mt-1">
+              {{ robotName(incident.robotId) }} в сервисном контуре — техническая недоступность
+              продолжается
+            </p>
+          </div>
+        </div>
+
+        <!-- Замещение -->
+        <div v-if="substitution" class="rounded-lg border border-border p-3 text-sm space-y-1">
+          <p>
+            <span class="text-muted-foreground">Повреждённый:</span>
+            {{ robotName(substitution.damagedRobotId) }} ·
+            <span class="text-muted-foreground">Резерв:</span>
+            <span class="font-medium"> {{ robotName(substitution.backupRobotId) }}</span>
+          </p>
+          <p class="text-xs text-muted-foreground">
+            Задание: {{ substitution.originalTask }} → {{ substitution.newTask }} · Автор:
+            {{ substitution.authorName }}
+          </p>
+          <p class="text-xs text-muted-foreground tab--nums">
+            Запрос: {{ fmtTime(substitution.requestedAt) }} · Назначение:
+            {{ substitution.assignedAt ? fmtTime(substitution.assignedAt) : '—' }} · Ввод:
+            {{ substitution.engagedAt ? fmtTime(substitution.engagedAt) : 'ожидание' }}
+          </p>
+        </div>
+        <p
+          v-else-if="canSubstitute"
+          class="text-xs text-muted-foreground rounded-lg border border-dashed border-border p-3"
+        >
+          Резерв не назначен. Доступно резервных на объекте:
+          {{ availableBackupsList.length }} ({{
+            availableBackupsList.map((r) => r.name).join(', ') || 'нет'
+          }}).
+        </p>
+
+        <!-- Два интервала раздельно -->
+        <div class="grid gap-3 md:grid-cols-2">
+          <div v-if="impactInterval" class="rounded-lg bg-muted/50 p-3">
+            <p class="text-xs text-muted-foreground">Операционное влияние</p>
+            <p class="text-sm font-medium tabular-nums">
+              {{
+                impactInterval.accountableDurationSeconds > 0
+                  ? fmtDur(impactInterval.accountableDurationSeconds)
+                  : 'открыто'
+              }}
+              <span v-if="impactInterval.lossRubles > 0" class="text-destructive">
+                · {{ impactInterval.lossRubles.toLocaleString('ru-RU') }} ₽</span
+              >
+            </p>
+            <p class="text-xs text-muted-foreground">
+              {{ fmtTime(impactInterval.startedAt) }} —
+              {{ impactInterval.endedAt ? fmtTime(impactInterval.endedAt) : 'продолжается' }} ·
+              {{ impactInterval.ratePerHour.toLocaleString('ru-RU') }} ₽/ч
+            </p>
+          </div>
+          <div v-if="techInterval" class="rounded-lg bg-muted/50 p-3">
+            <p class="text-xs text-muted-foreground">Техническая недоступность</p>
+            <p class="text-sm font-medium tabular-nums">
+              {{
+                techInterval.accountableDurationSeconds > 0
+                  ? fmtDur(techInterval.accountableDurationSeconds)
+                  : 'продолжается'
+              }}
+              · без начисления потерь
+            </p>
+            <p class="text-xs text-muted-foreground">
+              {{ fmtTime(techInterval.startedAt) }} —
+              {{ techInterval.endedAt ? fmtTime(techInterval.endedAt) : 'продолжается' }}
+            </p>
+          </div>
+        </div>
       </CardContent>
     </Card>
 
@@ -758,6 +997,64 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
         >
       </TabsContent>
     </Tabs>
+
+    <!-- Диалог: обеспечить безопасность (ТЗ v2.0 §6 шаг 4) -->
+    <Dialog :open="showSafety" @update:open="(v) => (showSafety = v)">
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Обеспечить безопасность зоны</DialogTitle>
+          <DialogDescription>
+            Зафиксировать ограждение зоны и вывод робота с критического пути. Запись появится в
+            истории с вашим именем.
+          </DialogDescription>
+        </DialogHeader>
+        <div class="space-y-2">
+          <Label for="safety-comment">Что сделано</Label>
+          <Textarea
+            id="safety-comment"
+            v-model="safetyComment"
+            placeholder="Например: зона C-12 ограждена, робот эвакуирован погрузчиком на сервисную стоянку"
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" @click="showSafety = false">Отмена</Button>
+          <Button @click="submitSafety">Подтвердить безопасность</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Диалог: назначить резерв (ТЗ v2.0 §6 шаг 5) -->
+    <Dialog :open="showSubstitution" @update:open="(v) => (showSubstitution = v)">
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Назначить резервного робота</DialogTitle>
+          <DialogDescription>
+            FleetOps фиксирует решение и состояния: повреждённый робот переходит в диагностику,
+            резерв следует в зону. Управление движением остаётся за RMS/FMS.
+          </DialogDescription>
+        </DialogHeader>
+        <div class="space-y-2">
+          <Label for="sub-backup"
+            >Резервный робот ({{ availableBackupsList.length }} доступно)</Label
+          >
+          <Select v-model="subBackupId" aria-label="Резервный робот">
+            <SelectTrigger id="sub-backup"
+              ><SelectValue placeholder="Выберите резерв"
+            /></SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="r in availableBackupsList" :key="r.id" :value="r.id">
+                {{ r.name }} · {{ r.model }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <p v-if="subError" class="text-xs text-destructive">{{ subError }}</p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" @click="showSubstitution = false">Отмена</Button>
+          <Button :disabled="!subBackupId" @click="submitSubstitution">Назначить</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <!-- Диалог: назначить координатора -->
     <Dialog :open="showAssign" @update:open="(v) => (showAssign = v)">

@@ -114,6 +114,8 @@ export const TIMELINE_EVENT_RU: Record<string, string> = {
   EVENT: 'Событие',
   CREATED: 'Создание инцидента',
   ASSIGNED: 'Назначение координатора',
+  SAFETY: 'Безопасность',
+  SUBSTITUTION: 'Замещение',
   OBSERVATION: 'Наблюдение',
   CAUSE: 'Причина',
   ACTION_CREATED: 'Сервисное действие',
@@ -122,6 +124,7 @@ export const TIMELINE_EVENT_RU: Record<string, string> = {
   DOWNTIME: 'Простой',
   CLOSED: 'Закрытие',
   REOPENED: 'Переоткрытие',
+  SCENARIO: 'Шаг сценария',
 }
 export const EVENT_STATUS_RU: Record<string, string> = {
   RECEIVED: 'Принято',

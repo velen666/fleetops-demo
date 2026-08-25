@@ -1548,6 +1548,12 @@ export function generateDemoData() {
       hasDowntime: t.impactMin > 0 || t.dtStatus === 'PROPOSED',
       downtimeConfirmed: impactConfirmed,
       recoveryConfirmed: t.recovery,
+      safetyConfirmedAt:
+        t.status === 'CLOSED' || t.status === 'READY_TO_CLOSE' || isReference
+          ? isReference
+            ? daysAgo(3, 9, 18)
+            : plusMinutes(opened, 5)
+          : null,
       downtimeSeconds: dtSeconds,
       lossRubles: loss,
       reactionSlaSeconds: t.slaReactionMin ? t.slaReactionMin * 60 : null,
