@@ -39,10 +39,19 @@ interface NavItem {
   icon: string
   sidebarOrder: number
   requiredPermission?: string
+  requiredRole?: string
 }
 
 const allNavItems: NavItem[] = [
   { name: 'overview', title: 'Обзор', icon: 'LayoutDashboard', sidebarOrder: 10 },
+  {
+    // Объектовый дашборд (ТЗ v2.0 §8.1) — стартовый экран начальника склада.
+    name: 'my-site',
+    title: 'Мой объект',
+    icon: 'MapPin',
+    sidebarOrder: 5,
+    requiredRole: 'SITE_MANAGER',
+  },
   {
     name: 'events',
     title: 'События',
@@ -82,7 +91,11 @@ const allNavItems: NavItem[] = [
 ]
 
 const navItems = computed(() =>
-  allNavItems.filter((item) => !item.requiredPermission || auth.can(item.requiredPermission)),
+  allNavItems.filter((item) => {
+    if (item.requiredRole && auth.activeRoleCode !== item.requiredRole) return false
+    if (item.name === 'overview' && auth.activeRoleCode === 'SITE_MANAGER') return false
+    return !item.requiredPermission || auth.can(item.requiredPermission)
+  }),
 )
 
 const currentTitle = computed(() => (route.meta?.title as string) ?? 'FleetOps')

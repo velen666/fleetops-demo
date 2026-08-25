@@ -54,6 +54,39 @@ export const INTERVAL_STATUS_RU: Record<string, string> = {
   CLOSED: 'Закрыт',
 }
 
+/** Состояния парка (ТЗ v2.0 §5.2) — ровно одно на единицу. */
+export const FLEET_STATE_RU: Record<string, string> = {
+  WORKING: 'Работает в зоне',
+  RESERVE: 'Готов к резерву',
+  ASSIGNED_REPLACE: 'Назначен на замену',
+  CHARGING: 'На зарядке',
+  EMERGENCY_STOP: 'Аварийная остановка / эвакуация',
+  DIAGNOSTICS: 'Диагностика',
+  AWAITING_REPAIR: 'Ожидает ремонта / запчастей',
+  IN_REPAIR: 'В ремонте',
+  TEST_RUN: 'Контрольный запуск',
+  RETURNED_TO_PARK: 'Возвращён в парк',
+}
+
+export const FLEET_STATE_CLASS: Record<string, string> = {
+  WORKING: 'bg-success/15 text-success',
+  RESERVE: 'bg-cyan-500/15 text-cyan-500',
+  ASSIGNED_REPLACE: 'bg-primary/15 text-primary',
+  CHARGING: 'bg-muted text-muted-foreground',
+  EMERGENCY_STOP: 'bg-destructive/15 text-destructive',
+  DIAGNOSTICS: 'bg-warning/15 text-warning',
+  AWAITING_REPAIR: 'bg-orange-500/15 text-orange-500',
+  IN_REPAIR: 'bg-orange-500/15 text-orange-500',
+  TEST_RUN: 'bg-primary/15 text-primary',
+  RETURNED_TO_PARK: 'bg-success/15 text-success',
+}
+
+/** Два типа интервала (ТЗ v2.0 §5.3). */
+export const INTERVAL_TYPE_RU: Record<string, string> = {
+  OPERATIONAL_IMPACT: 'Операционное влияние',
+  TECHNICAL_UNAVAILABLE: 'Техническая недоступность',
+}
+
 /** Характер простоя (ТЗ §31): что именно было недоступно и в каком режиме. */
 export const DOWNTIME_KIND_RU: Record<string, string> = {
   UNPLANNED_TECHNICAL: 'Внеплановый технический',

@@ -21,6 +21,18 @@ export const router = createRouter({
           meta: { title: 'Обзор', icon: 'LayoutDashboard', sidebarOrder: 10 },
         },
         {
+          // Объектовый дашборд начальника склада (ТЗ v2.0 §8.1)
+          path: 'my-site',
+          name: 'my-site',
+          component: () => import('@/pages/MySitePage.vue'),
+          meta: {
+            title: 'Мой объект',
+            icon: 'MapPin',
+            sidebarOrder: 5,
+            requiredRole: 'SITE_MANAGER',
+          },
+        },
+        {
           path: 'events',
           name: 'events',
           component: () => import('@/pages/EventsListPage.vue'),
@@ -130,12 +142,20 @@ router.beforeEach((to) => {
   if (!to.meta.public && !auth.isAuthenticated) {
     return { name: 'login' }
   }
+  // Объектовая точка входа (ТЗ v2.0 §3): начальник склада начинает со своего объекта.
+  if (auth.activeRoleCode === 'SITE_MANAGER' && (to.name === 'overview' || to.path === '/')) {
+    return { name: 'my-site' }
+  }
   // RBAC: проверка прав при прямом URL
   if (
     to.meta.requiredPermission &&
     auth.isAuthenticated &&
     !auth.can(to.meta.requiredPermission as string)
   ) {
+    return { name: auth.activeRoleCode === 'SITE_MANAGER' ? 'my-site' : 'overview' }
+  }
+  // Ролевой экран: «Мой объект» доступен только начальнику склада.
+  if (to.meta.requiredRole && auth.activeRoleCode !== to.meta.requiredRole) {
     return { name: 'overview' }
   }
 })
