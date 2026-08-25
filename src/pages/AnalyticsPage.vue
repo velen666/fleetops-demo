@@ -35,7 +35,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-const { incidents, downtimes, sites, robots } = useDemoData()
+const { incidents, downtimes, sites, robots, maintenance } = useDemoData()
 const route = useRoute()
 const router = useRouter()
 
@@ -96,6 +96,16 @@ const selectionDowntimes = computed(() => {
   )
 })
 
+/** Подтверждённое операционное влияние (потери процесса, ТЗ v2.0 §9.2). */
+const selectionImpact = computed(() =>
+  selectionDowntimes.value.filter((d) => d.intervalType === 'OPERATIONAL_IMPACT'),
+)
+
+/** Подтверждённая техническая недоступность (доступность актива). */
+const selectionTech = computed(() =>
+  selectionDowntimes.value.filter((d) => d.intervalType === 'TECHNICAL_UNAVAILABLE'),
+)
+
 function siteName(id: string): string {
   return sites.value.find((s) => s.id === id)?.name ?? id
 }
@@ -104,35 +114,71 @@ function robotName(id: string | null): string {
   return robots.value.find((r) => r.id === id)?.name ?? id
 }
 
-// ─── 32.2 Верхняя сводка (с формулами; клик → выборка) ──────────────────────
+// ─── 32.2 Верхняя сводка (ТЗ v2.0 §9.2: раздельные метрики) ────────────────
 
 const kpis = computed(() => {
   const sel = selection.value
-  const dts = selectionDowntimes.value
-  const downtimeSec = dts.reduce((s, d) => s + d.accountableDurationSeconds, 0)
-  const loss = dts.reduce((s, d) => s + d.lossRubles, 0)
+  const impact = selectionImpact.value
+  const tech = selectionTech.value
+  const impactSec = impact.reduce((s, d) => s + d.accountableDurationSeconds, 0)
+  const techSec = tech.reduce((s, d) => s + d.accountableDurationSeconds, 0)
+  const loss = impact.reduce((s, d) => s + d.lossRubles, 0)
   const active = sel.filter((i) => i.status !== 'CLOSED').length
   const withFinal = sel.filter((i) => i.causeMaturity === 'FINAL').length
   const unfinished = sel.filter((i) => i.status !== 'CLOSED' && i.causeMaturity !== 'FINAL').length
-  // доступность: 1 − простои / плановый фонд робот-часов (24×7 × парк × 30 дней)
+  // Плановый фонд робот-часов: смена 8 ч × 30 дней × парк (ТЗ §10.3: 6 240 при 26 роботах).
   const fleet =
     filterSite.value !== 'all'
       ? robots.value.filter((r) => r.siteId === filterSite.value).length
       : robots.value.length
-  const plannedFleetHours = fleet * 24 * 30
-  const availability =
-    plannedFleetHours > 0 ? 100 - (downtimeSec / 3600 / plannedFleetHours) * 100 : 100
+  const plannedRobotHours = fleet * 8 * 30
+  // Техническая доступность = 1 − технедоступность / плановые часы.
+  const techAvailability =
+    plannedRobotHours > 0 ? 100 - (techSec / 3600 / plannedRobotHours) * 100 : 100
+  // Операционная доступность мощности = 1 − влияние / плановые часы.
+  const powerAvailability =
+    plannedRobotHours > 0 ? 100 - (impactSec / 3600 / plannedRobotHours) * 100 : 100
+  // Стоимость ремонта: труд + запчасти + услуги по завершённым работам (§9.2).
+  const doneWorks = maintenance.value.filter(
+    (m) =>
+      (m.status === 'DONE' || m.status === 'RESULT_CONFIRMED') &&
+      (filterSite.value === 'all' || m.siteId === filterSite.value),
+  )
+  const repairCost = doneWorks.reduce((s, m) => s + m.laborCost + m.partsCost + m.externalCost, 0)
+  const backlogWorks = maintenance.value.filter(
+    (m) =>
+      !['DONE', 'RESULT_CONFIRMED', 'CANCELLED'].includes(m.status) &&
+      (filterSite.value === 'all' || m.siteId === filterSite.value),
+  )
+  const backlogRobots = new Set(backlogWorks.map((m) => m.robotId)).size
+  // Резерв ниже норматива (риск устойчивости, не потеря — §9.2).
+  const reserveBelow = sites.value
+    .filter((s) => filterSite.value === 'all' || s.id === filterSite.value)
+    .filter(
+      (s) =>
+        robots.value.filter((r) => r.siteId === s.id && r.fleetState === 'RESERVE').length <
+        s.reserveNorm,
+    )
+    .map((s) => s.name)
   return {
     incidentsCount: sel.length,
-    confirmedDowntimeHours: downtimeSec / 3600,
+    impactHours: impactSec / 3600,
+    techHours: techSec / 3600,
     confirmedLoss: loss,
     activeIncidents: active,
     finalCauseShare: sel.length > 0 ? (withFinal / sel.length) * 100 : 0,
     unfinishedReviews: unfinished,
-    availability,
+    techAvailability,
+    powerAvailability,
     fleet,
-    plannedFleetHours,
-    intervals: dts.length,
+    plannedRobotHours,
+    impactIntervals: impact.length,
+    techIntervals: tech.length,
+    repairCost,
+    repairWorks: doneWorks.length,
+    backlogWorks: backlogWorks.length,
+    backlogRobots,
+    reserveBelow,
   }
 })
 
@@ -151,7 +197,7 @@ interface CauseRow {
 }
 
 const causeRows = computed<CauseRow[]>(() => {
-  const dts = selectionDowntimes.value
+  const dts = selectionImpact.value
   const total = dts.reduce((s, d) => s + d.lossRubles, 0)
   const byCause = new Map<string, CauseRow>()
   for (const d of dts) {
@@ -188,7 +234,7 @@ const causeChartData = computed(() => causeRows.value.map((r) => r.loss))
 const siteLossRows = computed(() =>
   sites.value
     .map((s) => {
-      const dts = selectionDowntimes.value.filter((d) => d.siteId === s.id)
+      const dts = selectionImpact.value.filter((d) => d.siteId === s.id)
       const loss = dts.reduce((s2, d) => s2 + d.lossRubles, 0)
       const zones = new Set(
         selection.value.filter((i) => i.siteId === s.id && i.zoneName).map((i) => i.zoneName),
@@ -215,7 +261,7 @@ const zoneColors: Record<string, string> = {
 
 const zoneLossRows = computed(() => {
   const byZone = new Map<string, { zone: string; loss: number; causes: Set<string> }>()
-  for (const d of selectionDowntimes.value) {
+  for (const d of selectionImpact.value) {
     const inc = selection.value.find((i) => i.id === d.incidentId)
     const zone = inc?.causeCode ? (CAUSE_CATALOG[inc.causeCode]?.zone ?? 'UNKNOWN') : 'UNKNOWN'
     const row = byZone.get(zone) ?? { zone, loss: 0, causes: new Set<string>() }
@@ -233,7 +279,7 @@ const siteZoneDatasets = computed(() => {
     label: RESPONSIBILITY_ZONE_RU[zone] ?? zone,
     color: zoneColors[zone] ?? '#64748b',
     data: siteLossRows.value.map((site) =>
-      selectionDowntimes.value
+      selectionImpact.value
         .filter((d) => {
           const inc = selection.value.find((i) => i.id === d.incidentId)
           return (
@@ -277,7 +323,7 @@ const repeatRows = computed<RepeatRow[]>(() => {
     const robotSet = new Set(incs.map((i) => i.robotId))
     const siteSet = new Set(incs.map((i) => i.siteId))
     const zoneSet = new Set(incs.map((i) => i.zoneName))
-    const dts = selectionDowntimes.value.filter((d) => incs.some((i) => i.id === d.incidentId))
+    const dts = selectionImpact.value.filter((d) => incs.some((i) => i.id === d.incidentId))
     rows.push({
       code,
       name: causeLabel(code),
@@ -335,7 +381,7 @@ const rtStats = computed(() => {
 
 const breakdownSort = ref<'loss' | 'hours' | 'site' | 'cause'>('loss')
 const breakdownRows = computed(() => {
-  const rows = selectionDowntimes.value.map((d) => {
+  const rows = selectionImpact.value.map((d) => {
     const inc = selection.value.find((i) => i.id === d.incidentId)
     return {
       downtime: d,
@@ -474,63 +520,85 @@ function exportBreakdownCsv(): void {
       </div>
     </div>
 
-    <!-- 32.2 Верхняя сводка -->
+    <!-- 32.2 Верхняя сводка (ТЗ v2.0 §9.2) -->
     <div class="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
       <Card>
         <CardContent class="p-4">
-          <p class="text-sm text-muted-foreground">Инцидентов</p>
-          <p class="text-2xl font-bold tabular-nums">{{ kpis.incidentsCount }}</p>
-          <p class="text-xs text-muted-foreground mt-0.5">активных: {{ kpis.activeIncidents }}</p>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent class="p-4">
-          <p class="text-sm text-muted-foreground">Подтверждённый простой</p>
-          <p class="text-2xl font-bold tabular-nums">
-            {{ kpis.confirmedDowntimeHours.toFixed(1) }} ч
+          <p class="text-sm text-muted-foreground">Техническая доступность</p>
+          <p class="text-2xl font-bold tabular-nums text-success">
+            {{ kpis.techAvailability.toFixed(2) }}%
           </p>
-          <p class="text-xs text-muted-foreground mt-0.5">{{ kpis.intervals }} интервалов</p>
+          <p class="text-xs text-muted-foreground mt-0.5">
+            1 − {{ kpis.techHours.toFixed(1) }} ч /
+            {{ kpis.plannedRobotHours.toLocaleString('ru-RU') }} ч ({{ kpis.fleet }} роб. × 8 ч × 30
+            дн)
+          </p>
         </CardContent>
       </Card>
       <Card>
         <CardContent class="p-4">
-          <p class="text-sm text-muted-foreground">Подтверждённые потери</p>
-          <p class="text-2xl font-bold tabular-nums">
+          <p class="text-sm text-muted-foreground">Операционная доступность мощности</p>
+          <p class="text-2xl font-bold tabular-nums text-success">
+            {{ kpis.powerAvailability.toFixed(2) }}%
+          </p>
+          <p class="text-xs text-muted-foreground mt-0.5">
+            влияние {{ kpis.impactHours.toFixed(1) }} ч · недоступность
+            {{ kpis.techHours.toFixed(1) }} ч — раздельно
+          </p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent class="p-4">
+          <p class="text-sm text-muted-foreground">Потери процесса</p>
+          <p class="text-2xl font-bold tabular-nums text-destructive">
             {{ kpis.confirmedLoss.toLocaleString('ru-RU') }} ₽
           </p>
-          <p class="text-xs text-muted-foreground mt-0.5">часы × ставка объекта</p>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent class="p-4">
-          <p class="text-sm text-muted-foreground">Доступность парка</p>
-          <p class="text-2xl font-bold tabular-nums text-success">
-            {{ kpis.availability.toFixed(1) }}%
-          </p>
           <p class="text-xs text-muted-foreground mt-0.5">
-            1 − {{ kpis.confirmedDowntimeHours.toFixed(1) }} ч /
-            {{ kpis.plannedFleetHours.toLocaleString('ru-RU') }} ч ({{ kpis.fleet }} роботов, 24×7)
+            {{ kpis.impactIntervals }} интервалов влияния × ставка объекта
           </p>
         </CardContent>
       </Card>
       <Card>
         <CardContent class="p-4">
-          <p class="text-sm text-muted-foreground">Доля с финальной причиной</p>
-          <p class="text-2xl font-bold tabular-nums">{{ kpis.finalCauseShare.toFixed(0) }}%</p>
+          <p class="text-sm text-muted-foreground">Стоимость ремонта</p>
+          <p class="text-2xl font-bold tabular-nums">
+            {{ kpis.repairCost.toLocaleString('ru-RU') }} ₽
+          </p>
           <p class="text-xs text-muted-foreground mt-0.5">
-            незавершённых разборов: {{ kpis.unfinishedReviews }}
+            труд + запчасти по {{ kpis.repairWorks }} работам — отдельно от потерь
           </p>
         </CardContent>
       </Card>
       <Card>
         <CardContent class="p-4">
-          <p class="text-sm text-muted-foreground">Время реакции / восстановления</p>
-          <p class="text-lg font-bold tabular-nums">
-            {{ rtStats.reaction.med }} / {{ rtStats.recovery.med }} мин
-            <span class="text-xs font-normal text-muted-foreground">медианы</span>
+          <p class="text-sm text-muted-foreground">Инциденты и бэклог</p>
+          <p class="text-2xl font-bold tabular-nums">
+            {{ kpis.activeIncidents }}
+            <span class="text-base font-normal text-muted-foreground">акт. ·</span>
+            {{ kpis.backlogRobots }}
+            <span class="text-base font-normal text-muted-foreground">в сервисе</span>
           </p>
           <p class="text-xs text-muted-foreground mt-0.5">
-            n={{ rtStats.reaction.n }} закрытых · открытых {{ rtStats.openCount }} отдельно
+            всего {{ kpis.incidentsCount }} · работ {{ kpis.backlogWorks }} · разборов не завершено
+            {{ kpis.unfinishedReviews }}
+          </p>
+        </CardContent>
+      </Card>
+      <Card :class="kpis.reserveBelow.length > 0 ? 'border-warning/40' : ''">
+        <CardContent class="p-4">
+          <p class="text-sm text-muted-foreground">Резерв ниже норматива</p>
+          <p
+            class="text-2xl font-bold tabular-nums"
+            :class="kpis.reserveBelow.length > 0 ? 'text-warning' : 'text-success'"
+          >
+            {{ kpis.reserveBelow.length }}
+          </p>
+          <p class="text-xs text-muted-foreground mt-0.5">
+            {{
+              kpis.reserveBelow.length > 0
+                ? kpis.reserveBelow.join(', ') + ' — риск устойчивости, не потеря'
+                : 'норматив выдержан на всех объектах'
+            }}
           </p>
         </CardContent>
       </Card>
@@ -788,7 +856,7 @@ function exportBreakdownCsv(): void {
             <strong class="text-foreground tabular-nums"
               >{{ kpis.confirmedLoss.toLocaleString('ru-RU') }} ₽</strong
             >
-            · {{ kpis.confirmedDowntimeHours.toFixed(1) }} ч</span
+            · {{ kpis.impactHours.toFixed(1) }} ч влияния</span
           >
         </div>
         <div class="overflow-x-auto max-h-[480px] overflow-y-auto">
