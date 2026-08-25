@@ -104,7 +104,14 @@ export const router = createRouter({
           path: 'sites/:siteId',
           name: 'site-details',
           component: () => import('@/pages/SiteDetailsPage.vue'),
-          meta: { title: 'Карточка объекта', hidden: true },
+          meta: { title: 'Объект', hidden: true },
+        },
+        {
+          // Страница зоны (ТЗ v2.0 §8.2): мощность, роботы, инциденты, интервалы
+          path: 'sites/:siteId/zones/:zoneCode',
+          name: 'zone-details',
+          component: () => import('@/pages/ZonePage.vue'),
+          meta: { title: 'Зона', hidden: true },
         },
         {
           path: 'maintenance',

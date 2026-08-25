@@ -345,9 +345,49 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
 
 <template>
   <div v-if="incident" class="space-y-4">
-    <Button variant="ghost" size="sm" @click="goBack"
-      ><ArrowLeft class="size-4 mr-1" /> К реестру</Button
-    >
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <!-- Хлебные крошки (ТЗ v2.0 §4): Объекты → РЦ → зона → инцидент -->
+      <nav
+        class="flex items-center gap-1 text-sm text-muted-foreground"
+        aria-label="Хлебные крошки"
+      >
+        <button
+          type="button"
+          class="hover:text-foreground underline-offset-2"
+          @click="router.push({ name: 'sites' })"
+        >
+          Объекты
+        </button>
+        <ChevronRight class="size-3.5" />
+        <button
+          type="button"
+          class="hover:text-foreground underline-offset-2"
+          @click="router.push({ name: 'site-details', params: { siteId: incident.siteId } })"
+        >
+          {{ siteName(incident.siteId) }}
+        </button>
+        <template v-if="incident.zoneName">
+          <ChevronRight class="size-3.5" />
+          <button
+            type="button"
+            class="hover:text-foreground underline-offset-2"
+            @click="
+              router.push({
+                name: 'zone-details',
+                params: { siteId: incident.siteId, zoneCode: incident.zoneName.split(' ')[0] },
+              })
+            "
+          >
+            зона {{ incident.zoneName.split(' ')[0] }}
+          </button>
+        </template>
+        <ChevronRight class="size-3.5" />
+        <span class="text-foreground font-medium font-mono">{{ incident.incidentNumber }}</span>
+      </nav>
+      <Button variant="ghost" size="sm" @click="goBack"
+        ><ArrowLeft class="size-4 mr-1" /> К реестру</Button
+      >
+    </div>
 
     <!-- Header card -->
     <Card>

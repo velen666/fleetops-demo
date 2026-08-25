@@ -26,7 +26,15 @@ import { ArrowLeft, MapPin } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
-const { sites, robots, incidents, downtimes, maintenance, costRates } = useDemoData()
+const {
+  sites,
+  robots,
+  incidents,
+  downtimes,
+  maintenance,
+  costRates,
+  zones: zoneCatalog,
+} = useDemoData()
 
 const siteId = computed(() => String(route.params.siteId ?? ''))
 const site = computed(() => sites.value.find((s) => s.id === siteId.value))
@@ -53,11 +61,17 @@ const siteRate = computed(
   () => costRates.value.find((r) => r.siteId === siteId.value)?.ratePerHour ?? 0,
 )
 
-const zones = computed(() => {
+const siteZones = computed(() => zoneCatalog.value.filter((z) => z.siteId === siteId.value))
+
+const zoneRows = computed(() => {
+  // Справочник зон объекта (мощность §8.2) + статистика инцидентов
   const byZone = new Map<
     string,
     {
       name: string
+      code: string
+      required: number
+      working: number
       robots: number
       incidents: number
       hours: number
@@ -65,10 +79,26 @@ const zones = computed(() => {
       causes: Map<string, number>
     }
   >()
+  for (const z of siteZones.value) {
+    byZone.set(z.code, {
+      name: z.name,
+      code: z.code,
+      required: z.requiredCapacity,
+      working: robots.value.filter((r) => r.zoneId === z.id && r.fleetState === 'WORKING').length,
+      robots: 0,
+      incidents: 0,
+      hours: 0,
+      loss: 0,
+      causes: new Map<string, number>(),
+    })
+  }
   for (const inc of siteIncidents.value) {
-    const z = inc.zoneName ?? '—'
-    const row = byZone.get(z) ?? {
-      name: z,
+    const code = inc.zoneName?.split(' ')[0] ?? '—'
+    const row = byZone.get(code) ?? {
+      name: inc.zoneName ?? code,
+      code,
+      required: 0,
+      working: 0,
       robots: 0,
       incidents: 0,
       hours: 0,
@@ -78,17 +108,22 @@ const zones = computed(() => {
     row.incidents++
     row.hours += inc.downtimeSeconds / 3600
     row.loss += inc.lossRubles
-    if (inc.robotId) {
-      const robotIds = new Set(
-        siteIncidents.value.filter((i) => i.zoneName === z && i.robotId).map((i) => i.robotId),
-      )
-      row.robots = robotIds.size
-    }
     if (inc.causeCode) row.causes.set(inc.causeCode, (row.causes.get(inc.causeCode) ?? 0) + 1)
-    byZone.set(z, row)
+    byZone.set(code, row)
+  }
+  for (const row of byZone.values()) {
+    row.robots = new Set(
+      siteIncidents.value
+        .filter((i) => (i.zoneName ?? '').startsWith(row.code) && i.robotId)
+        .map((i) => i.robotId),
+    ).size
   }
   return [...byZone.values()].sort((a, b) => b.loss - a.loss)
 })
+
+function goZone(code: string): void {
+  router.push({ name: 'zone-details', params: { siteId: siteId.value, zoneCode: code } })
+}
 
 const metrics = computed(() => {
   const confirmed = siteDowntimes.value.filter(
@@ -212,7 +247,7 @@ function goRobotsFiltered(): void {
           <CardHeader
             ><CardTitle>Зоны объекта</CardTitle>
             <p class="text-xs text-muted-foreground">
-              Клик по зоне — срез зоны (инциденты, простои, причины)
+              Клик по зоне — страница зоны (мощность, роботы, инциденты, интервалы)
             </p></CardHeader
           >
           <CardContent class="p-0">
@@ -220,6 +255,7 @@ function goRobotsFiltered(): void {
               <TableHeader
                 ><TableRow>
                   <TableHead class="py-2 px-3">Зона</TableHead>
+                  <TableHead class="py-2 px-3">Мощность</TableHead>
                   <TableHead class="py-2 px-3">Инцидентов</TableHead>
                   <TableHead class="py-2 px-3">Роботов затронуто</TableHead>
                   <TableHead class="py-2 px-3">Часы</TableHead>
@@ -228,14 +264,26 @@ function goRobotsFiltered(): void {
                 </TableRow></TableHeader
               >
               <TableBody>
-                <TableEmpty v-if="zones.length === 0" :colspan="6">Нет данных по зонам.</TableEmpty>
+                <TableEmpty v-if="zoneRows.length === 0" :colspan="7"
+                  >Нет данных по зонам.</TableEmpty
+                >
                 <TableRow
-                  v-for="z in zones"
-                  :key="z.name"
+                  v-for="z in zoneRows"
+                  :key="z.code"
                   class="row-interactive cursor-pointer"
-                  @click="router.push({ name: 'incidents', query: { site: siteId, q: z.name } })"
+                  @click="goZone(z.code)"
                 >
                   <TableCell class="text-sm py-2 px-3">{{ z.name }}</TableCell>
+                  <TableCell class="text-sm tabular-nums py-2 px-3">
+                    <span
+                      :class="
+                        z.required > 0 && z.working < z.required
+                          ? 'text-destructive font-semibold'
+                          : 'text-success'
+                      "
+                      >{{ z.working }} / {{ z.required || '—' }}</span
+                    >
+                  </TableCell>
                   <TableCell class="text-sm tabular-nums py-2 px-3">{{ z.incidents }}</TableCell>
                   <TableCell class="text-sm tabular-nums py-2 px-3">{{ z.robots }}</TableCell>
                   <TableCell class="text-sm tabular-nums py-2 px-3">{{

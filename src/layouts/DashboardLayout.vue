@@ -80,7 +80,14 @@ const allNavItems: NavItem[] = [
     sidebarOrder: 50,
     requiredPermission: 'economics.read',
   },
-  { name: 'robots', title: 'Роботы и объекты', icon: 'Bot', sidebarOrder: 60 },
+  // Раздельные разделы (ТЗ v2.0 §4): «Объекты» и «Роботы»
+  {
+    name: 'sites',
+    title: 'Объекты',
+    icon: 'MapPin',
+    sidebarOrder: 55,
+  },
+  { name: 'robots', title: 'Роботы', icon: 'Bot', sidebarOrder: 60 },
   {
     name: 'reports',
     title: 'Отчёты',
