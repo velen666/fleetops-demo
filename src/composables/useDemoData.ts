@@ -7,7 +7,10 @@ import type {
   RecoveryConfirmation,
   TimelineEntry,
   Robot,
+  RobotStateEntry,
   Site,
+  SiteZone,
+  Substitution,
   CauseClassification,
   CauseVersion,
   DowntimeRule,
@@ -35,6 +38,9 @@ const timeline = ref<TimelineEntry[]>(data.timeline)
 const causeClassifications = ref<CauseClassification[]>(data.causeClassifications)
 const robots = ref<Robot[]>(data.robots)
 const sites = ref<Site[]>(data.sites)
+const zones = ref<SiteZone[]>(data.zones)
+const robotStates = ref<RobotStateEntry[]>(data.robotStates)
+const substitutions = ref<Substitution[]>(data.substitutions)
 const downtimeRules = ref<DowntimeRule[]>(data.downtimeRules)
 const costRates = ref<CostRate[]>(data.costRates)
 const costSnapshots = ref<CostSnapshot[]>(data.costSnapshots)
@@ -53,6 +59,8 @@ const COLLECTIONS = {
   serviceActions,
   recoveryConfirmations,
   maintenance,
+  robots,
+  substitutions,
 } as const
 
 type CollectionName = keyof typeof COLLECTIONS
@@ -155,12 +163,13 @@ const stats = computed(() => {
   const incs = incidents.value ?? []
   const dts = downtimes.value ?? []
   const totalPeriodSeconds = 30 * 24 * 3600
-  const totalDowntime = dts
-    .filter((d) => d.confirmationStatus === 'CONFIRMED')
-    .reduce((sum, d) => sum + safeNumber(d.accountableDurationSeconds), 0)
-  const totalLoss = dts
-    .filter((d) => d.confirmationStatus === 'CONFIRMED')
-    .reduce((sum, d) => sum + safeNumber(d.lossRubles), 0)
+  // Только операционное влияние формирует потери процесса (ТЗ v2.0 §9.2);
+  // техническая недоступность идёт в доступность актива, не в деньги.
+  const impact = dts.filter(
+    (d) => d.intervalType === 'OPERATIONAL_IMPACT' && d.confirmationStatus === 'CONFIRMED',
+  )
+  const totalDowntime = impact.reduce((sum, d) => sum + safeNumber(d.accountableDurationSeconds), 0)
+  const totalLoss = impact.reduce((sum, d) => sum + safeNumber(d.lossRubles), 0)
   const activeIncidents = incs.filter((i) => i.status !== 'CLOSED').length
   const unclassifiedCount = incs.filter(
     (i) => i.causeMaturity === 'NONE' || i.causeCode === 'CA-060',
@@ -446,14 +455,21 @@ function createServiceAction(input: ServiceActionInput): void {
       id: `mnt-u-${Date.now().toString(36)}`,
       type: 'EMERGENCY',
       title: input.actionTypeName,
+      problem: inc.title,
       robotId: inc.robotId ?? robots.value[0]?.id ?? '',
       siteId: inc.siteId,
       incidentId: inc.id,
       executor: input.executor,
       dueAt: input.dueAt,
+      startedAt: null,
       completedAt: null,
       status: 'ASSIGNED',
       result: null,
+      testRunPassed: null,
+      returnedToParkAt: null,
+      laborCost: 0,
+      partsCost: 0,
+      externalCost: 0,
     }
     maintenance.value = [...maintenance.value, work]
     markAppended('maintenance', work)
@@ -774,13 +790,14 @@ function createManualIncident(input: ManualIncidentInput): Incident {
       siteId: input.siteId,
       robotId: input.robotId,
       zoneName: input.zoneName,
+      intervalType: 'OPERATIONAL_IMPACT',
       downtimeType: 'FULL',
       confirmationStatus: 'PROPOSED',
       confirmedBy: null,
       confirmedAt: null,
       intervalState: 'OPEN',
       kind: 'UNPLANNED_TECHNICAL',
-      impactObject: 'ROBOT',
+      impactObject: 'ZONE',
       impact: { backupRobotId: null, compensation: 'NONE', adjustmentBasis: null },
       startedAt: nowIso,
       endedAt: null,
@@ -818,6 +835,9 @@ export function useDemoData() {
     causeClassifications,
     robots,
     sites,
+    zones,
+    robotStates,
+    substitutions,
     downtimeRules,
     costRates,
     costSnapshots,

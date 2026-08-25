@@ -1,310 +1,391 @@
 import { describe, expect, it } from 'vitest'
-import { generateDemoData } from './generator'
-import { SOURCE_INSTANCES } from './generator'
+import { CAUSE_CATALOG, CONTROL_TOTALS, ZONES, generateDemoData } from './generator'
 import type { Downtime } from '@/types/domain'
 
-/**
- * Валидатор демо-данных по инвариантам TZ v1.6 §23.
- * Прогон после генерации обязан возвращать ноль ошибок.
- */
+// ─── Валидатор набора данных ТЗ v2.0 §10.4 (план §7.1) ────────────────────
+// Единое правило экономики: точные минуты × ставка, округление до рубля
+// на интервал. Задокументированные отклонения от таблиц ТЗ (внутренне
+// несогласованных): столкновение 265 417 (ТЗ 265 419, −2), Подольск 344 168
+// (ТЗ 344 169, −1), Домодедово 192 499 (ТЗ 192 500, −1), итог 986 667
+// (ТЗ 986 669, −2). Обухово и остальные группы — точно.
 
 const data = generateDemoData()
-const {
-  incidents,
-  downtimes,
-  events,
-  robots,
-  sites,
-  serviceActions,
-  recoveryConfirmations,
-  timeline,
-} = data
+const rateOf = (siteId: string) => data.sites.find((s) => s.id === siteId)!.ratePerHour
 
-const confirmedDts = downtimes.filter((d) => d.confirmationStatus === 'CONFIRMED')
+function impactIntervals(): Downtime[] {
+  return data.downtimes.filter((d) => d.intervalType === 'OPERATIONAL_IMPACT')
+}
+function techIntervals(): Downtime[] {
+  return data.downtimes.filter((d) => d.intervalType === 'TECHNICAL_UNAVAILABLE')
+}
+function confirmedImpact(): Downtime[] {
+  return impactIntervals().filter(
+    (d) => d.confirmationStatus === 'CONFIRMED' && d.accountableDurationSeconds > 0,
+  )
+}
 
-// ─── Хронология ─────────────────────────────────────────────────────────────
-
-describe('инвариант: хронология согласована', () => {
-  it('событие не позднее создания инцидента; метки не «после закрытия»', () => {
-    const errors: string[] = []
-    for (const inc of incidents) {
-      const own = events.filter((e) => e.incidentId === inc.id)
-      for (const e of own) {
-        if (e.timestamp > inc.openedAt)
-          errors.push(
-            `${inc.incidentNumber}: событие ${e.id} (${e.timestamp}) позже создания (${inc.openedAt})`,
-          )
-      }
-      if (inc.closedAt && inc.openedAt > inc.closedAt)
-        errors.push(`${inc.incidentNumber}: открыт позже закрытия`)
-      for (const t of timeline.filter((t) => t.incidentId === inc.id)) {
-        if (inc.closedAt && t.timestamp > inc.closedAt)
-          errors.push(`${inc.incidentNumber}: запись истории ${t.id} позже закрытия`)
-      }
-    }
-    expect(errors, errors.join('\n')).toEqual([])
+describe('DMO-01 · Парк, объекты, зоны (§10.1/§10.2)', () => {
+  it('ровно 26 уникальных роботов, 3 объекта, 9 зон', () => {
+    expect(data.robots.length).toBe(CONTROL_TOTALS.robots)
+    expect(new Set(data.robots.map((r) => r.id)).size).toBe(CONTROL_TOTALS.robots)
+    expect(data.sites.length).toBe(CONTROL_TOTALS.sites)
+    expect(data.zones.length).toBe(CONTROL_TOTALS.zones)
   })
 
-  it('исходные события одного инцидента отсортированы', () => {
-    const errors: string[] = []
-    for (const inc of incidents) {
-      const own = events
-        .filter((e) => e.incidentId === inc.id)
-        .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-      for (let i = 1; i < own.length; i++) {
-        if (own[i].timestamp < own[i - 1].timestamp)
-          errors.push(`${inc.incidentNumber}: события не в хронологическом порядке`)
+  it('робот принадлежит одному объекту и не более чем одной текущей зоне', () => {
+    for (const r of data.robots) {
+      expect(data.sites.some((s) => s.id === r.siteId)).toBe(true)
+      if (r.zoneId) {
+        const z = data.zones.find((x) => x.id === r.zoneId)
+        expect(z).toBeDefined()
+        expect(z!.siteId).toBe(r.siteId)
       }
     }
-    expect(errors).toEqual([])
+  })
+
+  it('стартовые состояния парка: 17 работают / 3 резерв / 3 зарядка / 2 сервис / 1 авария', () => {
+    const by = (s: string) => data.robots.filter((r) => r.fleetState === s).length
+    expect(by('WORKING')).toBe(17)
+    expect(by('RESERVE')).toBe(3)
+    expect(by('CHARGING')).toBe(3)
+    expect(by('IN_REPAIR') + by('AWAITING_REPAIR')).toBe(2)
+    expect(by('EMERGENCY_STOP')).toBe(1)
+    // Одна единица — одно состояние: сумма всех состояний = 26.
+    const total = data.robots.length
+    expect(total).toBe(26)
+  })
+
+  it('мощность зон по §10.2: C-12 3/2 (дефицит из-за аварии), остальные по нормативу', () => {
+    const actual = (zid: string) =>
+      data.robots.filter((r) => r.fleetState === 'WORKING' && r.zoneId === zid).length
+    const expectZone = (code: string, site: string, req: number, act: number) => {
+      const z = ZONES.find((x) => x.code === code && x.siteId === site)!
+      expect(z.requiredCapacity).toBe(req)
+      expect(actual(z.id)).toBe(act)
+    }
+    expectZone('A-3', 'site-pod', 2, 2)
+    expectZone('B-2', 'site-pod', 2, 2)
+    expectZone('C-12', 'site-pod', 3, 2)
+    expectZone('A-1', 'site-obh', 2, 2)
+    expectZone('B-4', 'site-obh', 2, 2)
+    expectZone('C-7', 'site-obh', 2, 2)
+    expectZone('A-2', 'site-dom', 2, 2)
+    expectZone('B-6', 'site-dom', 2, 2)
+    expectZone('C-3', 'site-dom', 1, 1)
+  })
+
+  it('резерв не назначен в две зоны; свободный резерв Подольска = 1 на старте', () => {
+    const subsByBackup = new Map<string, number>()
+    for (const s of data.substitutions) {
+      subsByBackup.set(s.backupRobotId, (subsByBackup.get(s.backupRobotId) ?? 0) + 1)
+    }
+    for (const [robotId, n] of subsByBackup) {
+      const robot = data.robots.find((r) => r.id === robotId)
+      // Исторические замещения завершены — резерв снова свободен.
+      if (robot && robot.fleetState === 'RESERVE') expect(n).toBeLessThan(2)
+    }
+    const podReserve = data.robots.filter(
+      (r) => r.siteId === 'site-pod' && r.fleetState === 'RESERVE',
+    )
+    expect(podReserve.map((r) => r.name)).toEqual(['FMR-012'])
   })
 })
 
-// ─── Закрытые инциденты: обязательные поля ──────────────────────────────────
+describe('DMO-01 · Инциденты: идентификаторы и состав (§10.3)', () => {
+  it('ровно 33 канонических уникальных INC-2026-XXXX', () => {
+    expect(data.incidents.length).toBe(CONTROL_TOTALS.incidents)
+    const nums = data.incidents.map((i) => i.incidentNumber)
+    expect(new Set(nums).size).toBe(33)
+    for (const n of nums) expect(n).toMatch(/^INC-2026-\d{4}$/)
+  })
 
-describe('инвариант: закрытый инцидент завершён полностью', () => {
-  it('финальная причина + восстановление + решение по простою + завершённое действие', () => {
-    const errors: string[] = []
-    for (const inc of incidents.filter((i) => i.status === 'CLOSED')) {
-      const label = inc.incidentNumber
-      if (inc.causeMaturity !== 'FINAL')
-        errors.push(
-          `${label}: закрыт без финальной причины (${inc.causeMaturity}, ${inc.causeCode})`,
+  it('состав по группам причин: 6/7/5/4/3/3/3/2', () => {
+    const count = (code: string) =>
+      data.incidents.filter((i) => i.causeMaturity !== 'NONE' && i.causeCode === code).length
+    // 6 столкновений: 5 подтверждённых + живой рабочий (без причины)
+    const collisions = data.incidents.filter(
+      (i) => i.causeCode === 'CA-041' || (i.status === 'OPEN' && i.robotId === 'fmr-1'),
+    ).length
+    expect(collisions).toBe(6)
+    expect(count('CA-044')).toBe(7)
+    expect(count('CA-045')).toBe(5)
+    expect(count('CA-022')).toBe(4)
+    expect(count('CA-023')).toBe(3)
+    expect(count('CA-011')).toBe(3)
+    expect(count('CA-047')).toBe(3)
+    expect(count('CA-062')).toBe(2)
+  })
+
+  it('закрытый инцидент: причина, комментарий человека, действие с результатом, интервалы, подтверждения', () => {
+    for (const inc of data.incidents.filter((i) => i.status === 'CLOSED')) {
+      expect(inc.causeCode, inc.incidentNumber).toBeTruthy()
+      expect(inc.causeMaturity).toBe('FINAL')
+      expect(inc.coordinatorName, inc.incidentNumber).toBeTruthy()
+      const cause = data.causeClassifications.find((c) => c.incidentId === inc.id)
+      expect(cause?.currentMaturity).toBe('FINAL')
+      const finalVersion = cause?.versions.at(-1)
+      expect(finalVersion?.comment, inc.incidentNumber).toBeTruthy()
+      expect(finalVersion!.comment!.length).toBeGreaterThanOrEqual(20)
+      const acts = data.serviceActions.filter((a) => a.incidentId === inc.id)
+      expect(acts.length, inc.incidentNumber).toBeGreaterThan(0)
+      expect(acts.every((a) => a.result !== null)).toBe(true)
+      expect(inc.recoveryConfirmed).toBe(true)
+      const impact = impactIntervals().find((d) => d.incidentId === inc.id)
+      if (impact) {
+        expect(impact.confirmationStatus).toBe('CONFIRMED')
+        expect(impact.intervalState).toBe('CLOSED')
+      }
+      const tech = techIntervals().find((d) => d.incidentId === inc.id)
+      if (tech) expect(tech.intervalState).toBe('CLOSED')
+    }
+  })
+
+  it('автоматический инцидент имеет исходные события; события связаны с инцидентом', () => {
+    for (const inc of data.incidents) {
+      const evts = data.events.filter((e) => e.incidentId === inc.id)
+      expect(evts.length, inc.incidentNumber).toBeGreaterThanOrEqual(2)
+      for (const e of evts) {
+        expect(e.siteId).toBe(inc.siteId)
+        if (e.robotId) expect(e.robotId).toBe(inc.robotId)
+      }
+    }
+  })
+
+  it('стартовый срез: 5 активных, 6 требуют разбора, 4 робота в бэклоге', () => {
+    const active = data.incidents.filter(
+      (i) => i.status !== 'CLOSED' && i.status !== 'READY_TO_CLOSE',
+    )
+    expect(active.length).toBe(CONTROL_TOTALS.startActiveIncidents)
+    const requireAnalysis = data.incidents.filter((i) => i.status !== 'CLOSED')
+    expect(requireAnalysis.length).toBe(CONTROL_TOTALS.startRequireAnalysis)
+    const backlogRobots = new Set(
+      data.maintenance
+        .filter(
+          (m) => m.status !== 'RESULT_CONFIRMED' && m.status !== 'DONE' && m.status !== 'CANCELLED',
         )
-      if (!inc.recoveryConfirmed) errors.push(`${label}: закрыт без подтверждения восстановления`)
-      const dt = downtimes.find((d) => d.incidentId === inc.id)
-      if (!dt) errors.push(`${label}: закрыт без решения по простою (нет интервала)`)
-      else if (!['CONFIRMED', 'ADJUSTED', 'REJECTED'].includes(dt.confirmationStatus))
-        errors.push(`${label}: решение по простою не принято (${dt.confirmationStatus})`)
-      const acts = serviceActions.filter((a) => a.incidentId === inc.id)
-      if (acts.length === 0) errors.push(`${label}: закрыт без сервисных действий`)
-      else if (!acts.some((a) => a.status === 'COMPLETED'))
-        errors.push(`${label}: нет завершённого действия`)
-    }
-    expect(errors, errors.join('\n')).toEqual([])
-  })
-
-  it('у финальной причины — человеческий комментарий и доказательства', () => {
-    const errors: string[] = []
-    for (const cls of data.causeClassifications) {
-      const final = cls.versions.find((v) => v.maturity === 'FINAL')
-      if (!final) continue
-      if (!final.comment || final.comment.trim().length < 20)
-        errors.push(`${cls.incidentId}: FINAL без осмысленного комментария`)
-      if (final.evidence.length === 0) errors.push(`${cls.incidentId}: FINAL без доказательств`)
-    }
-    expect(errors, errors.join('\n')).toEqual([])
+        .map((m) => m.robotId),
+    )
+    expect(backlogRobots.size).toBe(CONTROL_TOTALS.startBacklogRobots)
   })
 })
 
-// ─── Источники: границы RMS/WMS ──────────────────────────────────────────────
-
-const WMS_ONLY = new Set([
-  'TASK_NOT_COMPLETED',
-  'TASK_NOT_STARTED',
-  'TASK_INTERRUPTED_WMS',
-  'TASK_NOT_ASSIGNED',
-])
-
-describe('инвариант: границы источников', () => {
-  it('WMS передаёт только процессные события; техника — от RMS/FMS/RCS', () => {
-    const errors: string[] = []
-    for (const e of events) {
-      if (e.source === 'WMS' && !WMS_ONLY.has(e.rawCode))
-        errors.push(`${e.id}: WMS источник для технического кода ${e.rawCode}`)
-      if ((e.source === 'RMS' || e.source === 'FMS') && WMS_ONLY.has(e.rawCode))
-        errors.push(`${e.id}: WMS-код ${e.rawCode} у источника ${e.source}`)
-    }
-    expect(errors, errors.slice(0, 5).join('\n')).toEqual([])
-  })
-
-  it('каждое событие привязано к экземпляру источника своего объекта', () => {
-    const errors: string[] = []
-    const instById = new Map(SOURCE_INSTANCES.map((s) => [s.id, s]))
-    for (const e of events) {
-      const inst = e.sourceInstanceId ? instById.get(e.sourceInstanceId) : undefined
-      if (!inst) {
-        errors.push(`${e.id}: нет экземпляра источника`)
-        continue
+describe('DMO-01 · Источники и хронология (§10.4)', () => {
+  it('WMS передаёт только процессные факты; технические сигналы — от RMS/FMS', () => {
+    for (const e of data.events) {
+      if (e.source === 'WMS') {
+        expect(
+          [
+            'TASK_NOT_COMPLETED',
+            'TASK_NOT_STARTED',
+            'TASK_NOT_ASSIGNED',
+            'DATA_MISMATCH',
+            'SYNC_TIMEOUT',
+          ],
+          e.rawCode,
+        ).toContain(e.rawCode)
+      } else if (e.source === 'RMS' || e.source === 'FMS') {
+        expect(e.rawCode).not.toMatch(/^TASK_(NOT_)?(COMPLETED|STARTED|ASSIGNED)$/)
       }
-      if (inst.siteId !== e.siteId)
-        errors.push(`${e.id}: экземпляр ${inst.systemName} другого объекта`)
-      if (e.source === 'WMS' && inst.kind !== 'WAREHOUSE')
-        errors.push(`${e.id}: WMS-событие от не-WMS экземпляра`)
-      if (e.source === 'RMS' && inst.kind !== 'FLEET_MANAGEMENT')
-        errors.push(`${e.id}: RMS-событие от не-RMS экземпляра`)
     }
-    expect(errors, errors.slice(0, 5).join('\n')).toEqual([])
   })
 
-  it('у каждого события есть русская интерпретация', () => {
-    const bad = events.filter(
-      (e) => !e.humanInterpretation || e.humanInterpretation.trim().length < 5,
-    )
-    expect(
-      bad.map((e) => e.id),
-      'события без русской интерпретации',
-    ).toEqual([])
-  })
-
-  it('нет шаблонных кодов IT-XXX_EVENT и «Event from»', () => {
-    const bad = events.filter(
-      (e) => /IT-\d+_EVENT/.test(e.rawCode) || /Event from/.test(e.rawMessage),
-    )
-    expect(bad.map((e) => `${e.id}:${e.rawCode}`)).toEqual([])
-  })
-})
-
-// ─── Интервалы простоя ──────────────────────────────────────────────────────
-
-describe('инвариант: интервалы простоя', () => {
-  it('конец не раньше начала; длительность из меток; открытый — не 0', () => {
-    const errors: string[] = []
-    for (const d of downtimes) {
-      const label = `dt ${d.id} (${d.incidentId})`
+  it('хронология инцидента неубывающая; конец ≥ начала; длительность из меток', () => {
+    for (const inc of data.incidents) {
+      const tl = data.timeline
+        .filter((t) => t.incidentId === inc.id)
+        .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+      expect(tl.length, inc.incidentNumber).toBeGreaterThan(0)
+      for (let k = 1; k < tl.length; k++)
+        expect(tl[k].timestamp >= tl[k - 1].timestamp, `${inc.incidentNumber} tl ${k}`).toBe(true)
+      expect(inc.openedAt >= inc.detectedAt, inc.incidentNumber).toBe(true)
+      if (inc.closedAt) expect(inc.closedAt >= inc.openedAt).toBe(true)
+    }
+    for (const d of data.downtimes) {
       if (d.endedAt) {
-        if (d.endedAt < d.startedAt) errors.push(`${label}: конец раньше начала`)
-        const expected = Math.round((Date.parse(d.endedAt) - Date.parse(d.startedAt)) / 60000) * 60
-        if (Math.abs(d.accountableDurationSeconds - expected) > 60)
-          errors.push(
-            `${label}: длительность ${d.accountableDurationSeconds}с ≠ из меток ${expected}с`,
-          )
+        expect(d.endedAt >= d.startedAt, d.id).toBe(true)
+        const computed = Math.round((Date.parse(d.endedAt) - Date.parse(d.startedAt)) / 60000)
+        expect(computed * 60, d.id).toBe(d.accountableDurationSeconds)
       } else {
-        if (d.intervalState !== 'OPEN')
-          errors.push(`${label}: нет конца, но состояние ${d.intervalState}`)
-        if (d.accountableDurationSeconds <= 0 && d.confirmationStatus === 'CONFIRMED')
-          errors.push(`${label}: открытый подтверждённый интервал с нулевой длительностью`)
+        expect(d.intervalState, d.id).toBe('OPEN')
       }
     }
-    expect(errors, errors.slice(0, 8).join('\n')).toEqual([])
   })
 
-  it('потери = подтверждённые часы × ставка объекта (округление до рубля)', () => {
-    const rates: Record<string, number> = {
-      'site-obh': 55000,
-      'site-pod': 70000,
-      'site-dom': 45000,
-    }
-    const errors: string[] = []
-    for (const d of confirmedDts) {
-      const rate = rates[d.siteId]
-      const hours = d.accountableDurationSeconds / 3600
-      const expected = Math.round(hours * rate)
-      if (Math.abs(d.ratePerHour - rate) > 0.01)
-        errors.push(`dt ${d.id}: ставка ${d.ratePerHour} ≠ объектовая ${rate}`)
-      if (d.lossRubles !== expected)
-        errors.push(`dt ${d.id}: потери ${d.lossRubles} ≠ ${expected} (${hours}ч × ${rate})`)
-    }
-    expect(errors, errors.slice(0, 8).join('\n')).toEqual([])
-  })
-})
-
-// ─── Идентификаторы ─────────────────────────────────────────────────────────
-
-describe('инвариант: канонические идентификаторы', () => {
-  it('INC-2026-XXXX; robotId существует; siteId существует', () => {
-    const errors: string[] = []
-    const robotIds = new Set(robots.map((r) => r.id))
-    const siteIds = new Set(sites.map((s) => s.id))
-    for (const inc of incidents) {
-      if (!/^INC-2026-\d{4}$/.test(inc.incidentNumber))
-        errors.push(`неканонический номер ${inc.incidentNumber}`)
-      if (inc.robotId && !robotIds.has(inc.robotId))
-        errors.push(`${inc.incidentNumber}: неизвестный робот ${inc.robotId}`)
-      if (!siteIds.has(inc.siteId))
-        errors.push(`${inc.incidentNumber}: неизвестный объект ${inc.siteId}`)
-    }
-    expect(errors).toEqual([])
-  })
-
-  it('инцидент без CA-014 как универсальной причины', () => {
-    const bad = incidents.filter((i) => i.causeCode === 'CA-014')
-    // CA-014 допустим только в единственном «честном» конфигурационном случае с параметром в комментарии
-    expect(bad.length).toBeLessThanOrEqual(1)
-    if (bad.length === 1) {
-      const cls = data.causeClassifications.find((c) => c.incidentId === bad[0].id)
-      const final = cls?.versions.find((v) => v.maturity === 'FINAL')
-      expect(final?.comment ?? '', 'CA-014 без указания параметра').toMatch(
-        /параметр|значени|верси/i,
-      )
-    }
-  })
-})
-
-// ─── События ↔ инциденты ────────────────────────────────────────────────────
-
-describe('инвариант: автоматические инциденты имеют исходные события', () => {
-  it('AUTOMATIC → ≥1 связанное событие; MANUAL → наблюдение в истории', () => {
-    const errors: string[] = []
-    for (const inc of incidents) {
-      if (inc.sourceKind === 'AUTOMATIC') {
-        const own = events.filter((e) => e.incidentId === inc.id && e.source !== 'MANUAL')
-        if (own.length === 0)
-          errors.push(`${inc.incidentNumber}: автоматический без исходных событий`)
+  it('единая история: автоматические записи помечены, ручные содержат автора', () => {
+    for (const t of data.timeline) {
+      if (t.eventType === 'CREATED' || t.eventType === 'EVENT' || t.eventType === 'SCENARIO') {
+        expect(typeof t.isAutomatic).toBe('boolean')
       }
+      expect(t.actorName.length).toBeGreaterThan(0)
     }
-    expect(errors).toEqual([])
+    const auto = data.timeline.filter((t) => t.isAutomatic)
+    expect(auto.length).toBeGreaterThan(0)
   })
 })
 
-// ─── Агрегаты ───────────────────────────────────────────────────────────────
-
-describe('инвариант: агрегаты согласованы', () => {
-  it('инцидент.downtimeSeconds/lossRubles = подтверждённый интервал', () => {
-    const errors: string[] = []
-    for (const inc of incidents) {
-      const dt = confirmedDts.find((d) => d.incidentId === inc.id)
-      if (dt) {
-        if (Math.abs(inc.downtimeSeconds - dt.accountableDurationSeconds) > 60)
-          errors.push(`${inc.incidentNumber}: downtimeSeconds ≠ интервалу`)
-        if (inc.lossRubles !== dt.lossRubles)
-          errors.push(`${inc.incidentNumber}: lossRubles ${inc.lossRubles} ≠ ${dt.lossRubles}`)
-      }
+describe('DMO-01 · Экономика: два интервала и контрольные суммы (§9.2/§10.3)', () => {
+  it('потери = подтверждённые минуты влияния × ставка объекта, округление на интервал', () => {
+    for (const d of confirmedImpact()) {
+      const minutes = d.accountableDurationSeconds / 60
+      expect(Number.isInteger(minutes), d.id).toBe(true)
+      expect(d.ratePerHour).toBe(rateOf(d.siteId))
+      expect(d.lossRubles, d.id).toBe(Math.round((minutes / 60) * rateOf(d.siteId)))
     }
-    expect(errors, errors.join('\n')).toEqual([])
+    // Техническая недоступность не начисляется как потеря процесса.
+    for (const d of techIntervals()) expect(d.lossRubles).toBe(0)
+    // Неподтверждённые интервалы не входят в потери.
+    const unconfirmed = impactIntervals().filter((d) => d.confirmationStatus !== 'CONFIRMED')
+    for (const d of unconfirmed) expect(d.lossRubles).toBe(0)
   })
 
-  it('целевой набор: 35 подтверждённых, 61.3ч, 3 532 000 ₽ (вариант «б»: лидар сверх §2)', () => {
-    expect(confirmedDts.length).toBe(35)
-    const totalSeconds = confirmedDts.reduce((s, d) => s + d.accountableDurationSeconds, 0)
-    // §2 hours are published rounded to 0.1h; tolerate ±6 minutes of exactness.
-    expect(Math.abs(totalSeconds / 3600 - 61.3)).toBeLessThan(0.1)
-    const totalLoss = confirmedDts.reduce((s, d) => s + d.lossRubles, 0)
-    // §2 money cannot always be hit to the ruble with whole-second durations
-    // (site rates 55k/70k/45k × minutes); tolerate ±1%.
-    expect(Math.abs(totalLoss - 3_532_000)).toBeLessThan(35_320)
+  it('итог: 1075 минут / 986 667 ₽ (ТЗ 986 669: −2, задокументировано)', () => {
+    const minutes = confirmedImpact().reduce((s, d) => s + d.accountableDurationSeconds, 0) / 60
+    const loss = confirmedImpact().reduce((s, d) => s + d.lossRubles, 0)
+    expect(minutes).toBe(CONTROL_TOTALS.confirmedImpactMinutes)
+    expect(Math.abs(loss - 986669)).toBeLessThanOrEqual(2)
+    expect(loss).toBe(986667)
   })
 
-  it('CA-045: 5 случаев × 30 мин, ≥3 робота, 2 в одной зоне', () => {
-    const lidar = incidents.filter((i) => i.causeCode === 'CA-045')
-    expect(lidar.length).toBe(5)
-    const dts = lidar
-      .map((i) => confirmedDts.find((d) => d.incidentId === i.id))
-      .filter(Boolean) as Downtime[]
-    expect(dts.every((d) => Math.abs(d.accountableDurationSeconds - 1800) < 1)).toBe(true)
-    const robotSet = new Set(lidar.map((i) => i.robotId))
-    expect(robotSet.size).toBeGreaterThanOrEqual(3)
-    const zoneCount: Record<string, number> = {}
-    for (const i of lidar) {
-      const z = i.zoneName ?? '?'
-      zoneCount[z] = (zoneCount[z] ?? 0) + 1
-    }
-    expect(Object.values(zoneCount).some((n) => n >= 2)).toBe(true)
+  it('разрез по объектам сходится: Подольск 295 мин, Обухово 450, Домодедово 330', () => {
+    const by = (site: string) => confirmedImpact().filter((d) => d.siteId === site)
+    const mins = (site: string) =>
+      by(site).reduce((s, d) => s + d.accountableDurationSeconds, 0) / 60
+    const loss = (site: string) => by(site).reduce((s, d) => s + d.lossRubles, 0)
+    expect(mins('site-pod')).toBe(295)
+    expect(mins('site-obh')).toBe(450)
+    expect(mins('site-dom')).toBe(330)
+    // Подольск 344 168 (ТЗ 344 169, −1); Обухово точно; Домодедово 192 499 (ТЗ 192 500, −1).
+    expect(Math.abs(loss('site-pod') - 344169)).toBeLessThanOrEqual(1)
+    expect(loss('site-obh')).toBe(450000)
+    expect(Math.abs(loss('site-dom') - 192500)).toBeLessThanOrEqual(1)
+    // Сумма объектов = итогу (один и тот же набор интервалов).
+    expect(loss('site-pod') + loss('site-obh') + loss('site-dom')).toBe(986667)
+  })
+
+  it('разрез по причинам: все группы точно, столкновение −2 ₽ (недостижимо в целых минутах)', () => {
+    const groupLoss = (code: string) =>
+      confirmedImpact()
+        .filter((d) => {
+          const inc = data.incidents.find((i) => i.id === d.incidentId)!
+          return inc.causeCode === code
+        })
+        .reduce((s, d) => s + d.lossRubles, 0)
+    expect(groupLoss('CA-044')).toBe(207500)
+    expect(groupLoss('CA-045')).toBe(147500)
+    expect(groupLoss('CA-022')).toBe(103750)
+    expect(groupLoss('CA-023')).toBe(82500)
+    expect(groupLoss('CA-011')).toBe(65000)
+    expect(groupLoss('CA-047')).toBe(82500)
+    expect(groupLoss('CA-062')).toBe(32500)
+    expect(Math.abs(groupLoss('CA-041') - 265419)).toBe(2)
+    expect(groupLoss('CA-041')).toBe(265417)
+  })
+
+  it('техническая недоступность: 49 ч 30 мин закрытых (24 / 18,5 / 7 по объектам)', () => {
+    const closedTech = techIntervals().filter((d) => d.intervalState === 'CLOSED')
+    const mins = (site: string) =>
+      closedTech
+        .filter((d) => d.siteId === site)
+        .reduce((s, d) => s + d.accountableDurationSeconds, 0) / 60
+    expect(mins('site-pod')).toBe(1440)
+    expect(mins('site-obh')).toBe(1110)
+    expect(mins('site-dom')).toBe(420)
+    expect(mins('site-pod') + mins('site-obh') + mins('site-dom')).toBe(2970)
+  })
+
+  it('показатели: техдоступность 99,21 %, операционная доступность мощности 99,71 %', () => {
+    const planned = CONTROL_TOTALS.plannedRobotHours
+    const techDownH = 2970 / 60
+    const impactH = 1075 / 60
+    const techAvail = (1 - techDownH / planned) * 100
+    const opAvail = (1 - impactH / planned) * 100
+    expect(Math.round(techAvail * 100) / 100).toBe(CONTROL_TOTALS.technicalAvailabilityPct)
+    expect(Math.round(opAvail * 100) / 100).toBe(CONTROL_TOTALS.operationalAvailabilityPct)
   })
 })
 
-// ─── Восстановление ─────────────────────────────────────────────────────────
+describe('DMO-01 · Основной случай INC-2026-0001 и живой режим (§6)', () => {
+  const ref = data.incidents[0]
 
-describe('инвариант: восстановление', () => {
-  it('recoveryConfirmed ⇔ запись RecoveryConfirmation', () => {
-    const errors: string[] = []
-    for (const inc of incidents) {
-      const rec = recoveryConfirmations.find((r) => r.incidentId === inc.id)
-      if (inc.recoveryConfirmed && !rec) errors.push(`${inc.incidentNumber}: флаг без записи`)
-      if (!inc.recoveryConfirmed && rec) errors.push(`${inc.incidentNumber}: запись без флага`)
-      if (rec && inc.closedAt && rec.recoveredAt > inc.closedAt)
-        errors.push(`${inc.incidentNumber}: восстановление после закрытия`)
+  it('эталонный кейс: 25 минут, 29 167 ₽, техническая недоступность 8 ч 28 мин', () => {
+    expect(ref.incidentNumber).toBe('INC-2026-0001')
+    expect(ref.status).toBe('CLOSED')
+    const impact = confirmedImpact().find((d) => d.incidentId === ref.id)!
+    expect(impact.accountableDurationSeconds / 60).toBe(25)
+    expect(impact.lossRubles).toBe(29167)
+    const tech = techIntervals().find((d) => d.incidentId === ref.id)!
+    expect(tech.accountableDurationSeconds / 60).toBe(508)
+    expect(tech.intervalState).toBe('CLOSED')
+  })
+
+  it('окончание влияния = ввод резерва; после ввода потери процесса не начисляются', () => {
+    const sub = data.substitutions.find((s) => s.incidentId === ref.id)!
+    expect(sub.backupRobotId).toBe('fmr-12')
+    expect(sub.damagedRobotId).toBe('fmr-1')
+    const impact = confirmedImpact().find((d) => d.incidentId === ref.id)!
+    expect(impact.endedAt).toBe(sub.engagedAt)
+    expect(impact.endedAt).toBe(sub.processRestoredAt)
+    // Техническая недоступность продолжалась после восстановления процесса.
+    const tech = techIntervals().find((d) => d.incidentId === ref.id)!
+    expect(Date.parse(tech.endedAt!)).toBeGreaterThan(Date.parse(impact.endedAt!))
+  })
+
+  it('живой рабочий INC-2026-0033: открыт, без причины, влияние не в контрольных суммах', () => {
+    const live = data.incidents.at(-1)!
+    expect(live.incidentNumber).toBe('INC-2026-0033')
+    expect(live.status).toBe('OPEN')
+    expect(live.causeCode).toBeNull()
+    const liveImpact = impactIntervals().find((d) => d.incidentId === live.id)!
+    expect(liveImpact.confirmationStatus).toBe('PROPOSED')
+    expect(liveImpact.intervalState).toBe('OPEN')
+    expect(liveImpact.lossRubles).toBe(0)
+    // Робот в аварийном состоянии, зона C-12 в дефиците.
+    const fmr1 = data.robots.find((r) => r.id === 'fmr-1')!
+    expect(fmr1.fleetState).toBe('EMERGENCY_STOP')
+  })
+
+  it('замещения ссылаются на существующие роботы того же объекта', () => {
+    for (const s of data.substitutions) {
+      const damaged = data.robots.find((r) => r.id === s.damagedRobotId)
+      const backup = data.robots.find((r) => r.id === s.backupRobotId)
+      expect(damaged).toBeDefined()
+      expect(backup).toBeDefined()
+      expect(damaged!.siteId).toBe(s.siteId)
+      expect(backup!.siteId).toBe(s.siteId)
+      const inc = data.incidents.find((i) => i.id === s.incidentId)
+      expect(inc).toBeDefined()
+      if (s.processRestoredAt && s.engagedAt) expect(s.processRestoredAt >= s.engagedAt).toBe(true)
     }
-    expect(errors).toEqual([])
+  })
+})
+
+describe('DMO-01 · Регресс v1.6 (инварианты генератора)', () => {
+  it('CA-014 не используется как универсальная причина', () => {
+    for (const inc of data.incidents) expect(inc.causeCode).not.toBe('CA-014')
+  })
+
+  it('все коды причин известны каталогу', () => {
+    for (const inc of data.incidents)
+      if (inc.causeCode) expect(CAUSE_CATALOG[inc.causeCode], inc.causeCode).toBeDefined()
+  })
+
+  it('генератор детерминирован по контрольным суммам', () => {
+    const again = generateDemoData()
+    const loss = (d: ReturnType<typeof generateDemoData>) =>
+      d.downtimes
+        .filter(
+          (x) => x.intervalType === 'OPERATIONAL_IMPACT' && x.confirmationStatus === 'CONFIRMED',
+        )
+        .reduce((s, x) => s + x.lossRubles, 0)
+    expect(loss(again)).toBe(loss(data))
+    expect(again.incidents.length).toBe(data.incidents.length)
+    expect(again.robots.length).toBe(data.robots.length)
+  })
+
+  it('зона инцидента — каноническое имя зоны объекта', () => {
+    for (const inc of data.incidents) {
+      const z = data.zones.find((x) => x.siteId === inc.siteId && inc.zoneName?.startsWith(x.code))
+      expect(z, `${inc.incidentNumber} → ${inc.zoneName}`).toBeDefined()
+    }
   })
 })

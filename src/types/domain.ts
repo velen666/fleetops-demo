@@ -11,6 +11,47 @@ export interface Site {
   readonly name: string
   readonly address: string
   readonly timezone: string
+  /** Ставка потерь процесса, ₽/ч (ТЗ v2.0 §10.1). */
+  readonly ratePerHour: number
+  /** Норматив резерва парка (ТЗ v2.0 §5.1 «Резервная устойчивость»). */
+  readonly reserveNorm: number
+}
+
+// ─── Зоны объекта (ТЗ v2.0 §5.1/§10.2) ─────────────────────────────────────
+
+export interface SiteZone {
+  readonly id: string
+  readonly siteId: string
+  readonly code: string
+  readonly name: string
+  /** Процесс зоны: приёмка / хранение / комплектация / отгрузка / перемещение. */
+  readonly process: string
+  /** Требуемая мощность зоны (число работающих единиц). */
+  readonly requiredCapacity: number
+  readonly responsibleName: string
+}
+
+// ─── Состояния парка (ТЗ v2.0 §5.2) ────────────────────────────────────────
+
+export type FleetState =
+  | 'WORKING' // работает в назначенной зоне
+  | 'RESERVE' // готов к резерву
+  | 'ASSIGNED_REPLACE' // назначен на замену и следует в зону
+  | 'CHARGING' // на зарядке
+  | 'EMERGENCY_STOP' // аварийная остановка / эвакуация
+  | 'DIAGNOSTICS' // диагностика
+  | 'AWAITING_REPAIR' // ожидает ремонта или запчастей
+  | 'IN_REPAIR' // в ремонте
+  | 'TEST_RUN' // контрольный запуск
+  | 'RETURNED_TO_PARK' // возвращён в парк
+
+export interface RobotStateEntry {
+  readonly robotId: string
+  readonly state: FleetState
+  readonly since: string
+  readonly source: 'RMS' | 'FMS' | 'MANUAL'
+  readonly zoneId: string | null
+  readonly comment: string | null
 }
 
 export interface Robot {
@@ -19,7 +60,11 @@ export interface Robot {
   readonly model: string
   readonly vendor: string
   readonly siteId: string
+  /** Текущее состояние парка (ТЗ v2.0 §5.2) — ровно одно на единицу. */
+  readonly fleetState: FleetState
   readonly status: 'ACTIVE' | 'MAINTENANCE' | 'DISABLED'
+  /** Текущая зона (null — вне зон: зарядка/ремонт без зоны). */
+  readonly zoneId: string | null
   /** Каноническая зона базирования (ТЗ §9: зона едина на всех вкладках). */
   readonly zoneName: string | null
   readonly serialNumber: string | null
@@ -161,11 +206,20 @@ export interface CauseVersion {
   readonly evidence: string[]
 }
 
-// ─── Downtime (EPIC-05 + TZ v1.6 §13/§31) ──────────────────────────────────
+// ─── Downtime (EPIC-05 + TZ v1.6 §13/§31 + ТЗ v2.0 §5.3) ───────────────────
 
 export type DowntimeConfirmationStatus =
   'PROPOSED' | 'PENDING_CONFIRMATION' | 'CONFIRMED' | 'ADJUSTED' | 'REJECTED'
 export type DowntimeIntervalState = 'OPEN' | 'CLOSED'
+
+/**
+ * Два типа интервала (ТЗ v2.0 §5.3):
+ * - OPERATIONAL_IMPACT — от потери требуемой мощности зоны до ввода
+ *   подтверждённой компенсации; определяет фактическую потерю процесса;
+ * - TECHNICAL_UNAVAILABLE — от аварийной остановки робота до контрольного
+ *   запуска и возврата в парк; определяет доступность актива и время ремонта.
+ */
+export type DowntimeIntervalType = 'OPERATIONAL_IMPACT' | 'TECHNICAL_UNAVAILABLE'
 
 /** Характер простоя — что именно было недоступно и в каком режиме (ТЗ §31). */
 export type DowntimeKind =
@@ -192,6 +246,8 @@ export interface Downtime {
   readonly siteId: string
   readonly robotId: string | null
   readonly zoneName: string | null
+  /** Тип интервала: операционное влияние или техническая недоступность. */
+  readonly intervalType: DowntimeIntervalType
   readonly downtimeType: 'FULL' | 'PARTIAL'
   readonly confirmationStatus: DowntimeConfirmationStatus
   readonly confirmedBy: string | null
@@ -209,6 +265,27 @@ export interface Downtime {
   readonly fallbackApplied: boolean
   readonly ratePerHour: number
   readonly lossRubles: number
+}
+
+// ─── Замещение (ТЗ v2.0 §5.1/§6) ──────────────────────────────────────────
+
+export interface Substitution {
+  readonly id: string
+  readonly incidentId: string
+  readonly siteId: string
+  readonly zoneId: string
+  readonly damagedRobotId: string
+  readonly backupRobotId: string
+  /** Исходная задача повреждённого робота и новая задача резерва. */
+  readonly originalTask: string
+  readonly newTask: string
+  readonly requestedAt: string
+  readonly assignedAt: string | null
+  readonly engagedAt: string | null
+  /** Подтверждение восстановления требуемой мощности зоны. */
+  readonly processRestoredAt: string | null
+  readonly confirmedBy: string | null
+  readonly authorName: string
 }
 
 // ─── Service Actions (EPIC-04) ─────────────────────────────────────────────
@@ -333,12 +410,22 @@ export interface MaintenanceWork {
   readonly id: string
   readonly type: MaintenanceType
   readonly title: string
+  readonly problem: string | null
   readonly robotId: string
   readonly siteId: string
   readonly incidentId: string | null
   readonly executor: string
   readonly dueAt: string
+  readonly startedAt: string | null
   readonly completedAt: string | null
   readonly status: MaintenanceStatus
   readonly result: string | null
+  /** Контрольный запуск пройден (ТЗ v2.0 §5.3 точка возврата в парк). */
+  readonly testRunPassed: boolean | null
+  /** Робот возвращён в парк после работы. */
+  readonly returnedToParkAt: string | null
+  /** Стоимость: труд + запчасти + внешние услуги (ТЗ v2.0 §9.2). */
+  readonly laborCost: number
+  readonly partsCost: number
+  readonly externalCost: number
 }
