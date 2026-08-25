@@ -3,7 +3,12 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDemoData } from '@/composables/useDemoData'
 import type { Downtime } from '@/types/domain'
-import { DOWNTIME_STATUS_RU, DOWNTIME_STATUS_CLASS, DOWNTIME_KIND_RU } from '@/data/labels'
+import {
+  DOWNTIME_STATUS_RU,
+  DOWNTIME_STATUS_CLASS,
+  DOWNTIME_KIND_RU,
+  INTERVAL_TYPE_RU,
+} from '@/data/labels'
 import { causeLabel } from '@/data/generator'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -27,11 +32,11 @@ import { Input } from '@/components/ui/input'
 import { Download } from 'lucide-vue-next'
 import { downloadCsv } from '@/lib/csv'
 
-const { downtimes, incidents, sites, robots } = useDemoData()
+const { downtimes, incidents, sites, robots, substitutions } = useDemoData()
 const route = useRoute()
 const router = useRouter()
 
-// ─── Фильтры (ТЗ §31; состояние в URL — прямая ссылка сохраняет выборку) ────
+// ─── Фильтры (ТЗ v2.0 §9.1; состояние в URL) ───────────────────────────────
 
 function strParam(v: unknown, fallback: string): string {
   return typeof v === 'string' && v.length > 0 ? v : fallback
@@ -39,22 +44,36 @@ function strParam(v: unknown, fallback: string): string {
 
 const filterSite = ref(strParam(route.query.site, 'all'))
 const filterRobot = ref(strParam(route.query.robot, 'all'))
+const filterBackup = ref(strParam(route.query.backup, 'all'))
 const filterCause = ref(strParam(route.query.cause, 'all'))
 const filterKind = ref(strParam(route.query.kind, 'all'))
 const filterStatus = ref(strParam(route.query.status, 'all'))
+const filterType = ref(strParam(route.query.type, 'all'))
 const filterQuick = ref(strParam(route.query.quick, 'all'))
 const searchText = ref(strParam(route.query.q, ''))
 
 watch(
-  [filterSite, filterRobot, filterCause, filterKind, filterStatus, filterQuick, searchText],
-  ([site, robot, cause, kind, status, quick, q]) => {
+  [
+    filterSite,
+    filterRobot,
+    filterBackup,
+    filterCause,
+    filterKind,
+    filterStatus,
+    filterType,
+    filterQuick,
+    searchText,
+  ],
+  ([site, robot, backup, cause, kind, status, type, quick, q]) => {
     void router.replace({
       query: {
         ...(site !== 'all' ? { site } : {}),
         ...(robot !== 'all' ? { robot } : {}),
+        ...(backup !== 'all' ? { backup } : {}),
         ...(cause !== 'all' ? { cause } : {}),
         ...(kind !== 'all' ? { kind } : {}),
         ...(status !== 'all' ? { status } : {}),
+        ...(type !== 'all' ? { type } : {}),
         ...(quick !== 'all' ? { quick } : {}),
         ...(q ? { q } : {}),
       },
@@ -89,13 +108,28 @@ const filtered = computed(() => {
   let list = downtimes.value
   if (filterSite.value !== 'all') list = list.filter((d) => d.siteId === filterSite.value)
   if (filterRobot.value !== 'all') list = list.filter((d) => d.robotId === filterRobot.value)
+  // Резервный робот (ТЗ §9.1): интервалы инцидентов, где он был резервом.
+  if (filterBackup.value !== 'all')
+    list = list.filter((d) =>
+      substitutions.value.some(
+        (s) => s.backupRobotId === filterBackup.value && s.incidentId === d.incidentId,
+      ),
+    )
   if (filterCause.value !== 'all') list = list.filter((d) => causeOf(d) === filterCause.value)
   if (filterKind.value !== 'all') list = list.filter((d) => d.kind === filterKind.value)
   if (filterStatus.value !== 'all')
     list = list.filter((d) => d.confirmationStatus === filterStatus.value)
+  // Тип интервала: операционное влияние / техническая недоступность.
+  if (filterType.value !== 'all') list = list.filter((d) => d.intervalType === filterType.value)
 
-  // Быстрые представления (ТЗ §31)
+  // Быстрые представления (ТЗ §9.1)
   switch (filterQuick.value) {
+    case 'operational':
+      list = list.filter((d) => d.intervalType === 'OPERATIONAL_IMPACT')
+      break
+    case 'technical':
+      list = list.filter((d) => d.intervalType === 'TECHNICAL_UNAVAILABLE')
+      break
     case 'open':
       list = list.filter((d) => d.intervalState === 'OPEN')
       break
@@ -133,31 +167,37 @@ const filtered = computed(() => {
   return [...list].sort((a, b) => b.startedAt.localeCompare(a.startedAt))
 })
 
-// ─── Сводка выборки (ТЗ §31) ─────────────────────────────────────────────────
+// ─── Сводка выборки (ТЗ §9.1: часы по типам раздельно) ─────────────────────
 
 const summary = computed(() => {
   const list = filtered.value
   const confirmed = list.filter(
     (d) => d.confirmationStatus === 'CONFIRMED' || d.confirmationStatus === 'ADJUSTED',
   )
-  const durations = confirmed.map((d) => d.accountableDurationSeconds).sort((a, b) => a - b)
+  const impact = confirmed.filter((d) => d.intervalType === 'OPERATIONAL_IMPACT')
+  const tech = confirmed.filter((d) => d.intervalType === 'TECHNICAL_UNAVAILABLE')
+  const durations = impact.map((d) => d.accountableDurationSeconds).sort((a, b) => a - b)
   const median = durations.length > 0 ? (durations[Math.floor(durations.length / 2)] ?? 0) : 0
-  const longest = confirmed.reduce<Downtime | null>(
+  const longest = impact.reduce<Downtime | null>(
     (max, d) => (!max || d.accountableDurationSeconds > max.accountableDurationSeconds ? d : max),
     null,
   )
   return {
     count: list.length,
     confirmedCount: confirmed.length,
-    confirmedHours: confirmed.reduce((s, d) => s + d.accountableDurationSeconds, 0) / 3600,
+    impactCount: impact.length,
+    techCount: tech.length,
+    impactHours: impact.reduce((s, d) => s + d.accountableDurationSeconds, 0) / 3600,
+    techHours: tech.reduce((s, d) => s + d.accountableDurationSeconds, 0) / 3600,
     openCount: list.filter((d) => d.intervalState === 'OPEN').length,
     needsConfirm: list.filter(
       (d) => !['CONFIRMED', 'ADJUSTED', 'REJECTED'].includes(d.confirmationStatus),
     ).length,
-    loss: confirmed.reduce((s, d) => s + d.lossRubles, 0),
+    // Потери процесса — только по подтверждённому операционному влиянию.
+    loss: impact.reduce((s, d) => s + d.lossRubles, 0),
     avgHours:
-      confirmed.length > 0
-        ? confirmed.reduce((s, d) => s + d.accountableDurationSeconds, 0) / confirmed.length / 3600
+      impact.length > 0
+        ? impact.reduce((s, d) => s + d.accountableDurationSeconds, 0) / impact.length / 3600
         : 0,
     medianHours: median / 3600,
     longestId: longest?.incidentId ?? null,
@@ -166,12 +206,20 @@ const summary = computed(() => {
 
 const QUICK_VIEWS: Array<{ key: string; label: string }> = [
   { key: 'all', label: 'Все' },
+  { key: 'operational', label: 'Операционное влияние' },
+  { key: 'technical', label: 'Техническая недоступность' },
   { key: 'open', label: 'Открытые сейчас' },
   { key: 'needs_confirm', label: 'Требуют подтверждения' },
   { key: 'top_loss', label: 'Крупнейшие потери' },
   { key: 'organizational', label: 'Организационные' },
   { key: 'infrastructure', label: 'Инфраструктурные' },
 ]
+
+// Резервные роботы, участвовавшие в замещениях (фильтр §9.1).
+const backupOptions = computed(() => {
+  const ids = new Set(substitutions.value.map((s) => s.backupRobotId))
+  return robots.value.filter((r) => ids.has(r.id))
+})
 
 // ─── Отображение ────────────────────────────────────────────────────────────
 
@@ -200,6 +248,7 @@ function goToIncident(incidentId: string): void {
 function exportCsv(): void {
   const rows = filtered.value.map((d) => [
     incidentNumber(d.incidentId),
+    INTERVAL_TYPE_RU[d.intervalType] ?? d.intervalType,
     siteName(d.siteId),
     d.zoneName ?? '',
     robotName(d.robotId),
@@ -209,13 +258,14 @@ function exportCsv(): void {
     DOWNTIME_KIND_RU[d.kind],
     causeLabel(causeOf(d)),
     DOWNTIME_STATUS_RU[d.confirmationStatus],
-    d.ratePerHour,
+    d.lossRubles > 0 ? d.ratePerHour : 0,
     d.lossRubles,
   ])
   downloadCsv(
     `downtimes-${new Date().toISOString().slice(0, 10)}.csv`,
     [
       'Инцидент',
+      'Тип интервала',
       'Объект',
       'Зона',
       'Робот',
@@ -262,12 +312,35 @@ function exportCsv(): void {
         </Select>
       </div>
       <div class="space-y-1">
+        <span class="text-xs text-muted-foreground block">Тип интервала</span>
+        <Select v-model="filterType" aria-label="Фильтр по типу интервала">
+          <SelectTrigger class="w-[230px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все типы</SelectItem>
+            <SelectItem value="OPERATIONAL_IMPACT">Операционное влияние</SelectItem>
+            <SelectItem value="TECHNICAL_UNAVAILABLE">Техническая недоступность</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="space-y-1">
         <span class="text-xs text-muted-foreground block">Робот</span>
         <Select v-model="filterRobot" aria-label="Фильтр по роботу">
           <SelectTrigger class="w-[150px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Все</SelectItem>
             <SelectItem v-for="r in robotOptions" :key="r.id" :value="r.id">{{
+              r.name
+            }}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div v-if="backupOptions.length > 0" class="space-y-1">
+        <span class="text-xs text-muted-foreground block">Резервный робот</span>
+        <Select v-model="filterBackup" aria-label="Фильтр по резервному роботу">
+          <SelectTrigger class="w-[150px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все</SelectItem>
+            <SelectItem v-for="r in backupOptions" :key="r.id" :value="r.id">{{
               r.name
             }}</SelectItem>
           </SelectContent>
@@ -322,22 +395,28 @@ function exportCsv(): void {
       </div>
     </div>
 
-    <!-- Сводка текущей выборки -->
+    <!-- Сводка текущей выборки (ТЗ §9.1: часы и потери по типам раздельно) -->
     <div class="flex flex-wrap gap-4 text-sm text-muted-foreground">
       <span
         >Интервалов:
         <strong class="text-foreground tabular-nums">{{ summary.count }}</strong>
-        <span class="text-xs">(подтверждённых: {{ summary.confirmedCount }})</span></span
+        <span class="text-xs"
+          >(влияние: {{ summary.impactCount }} · недоступность: {{ summary.techCount }})</span
+        ></span
       >
       <span
-        >Подтверждённые часы:
-        <strong class="text-foreground tabular-nums">{{
-          summary.confirmedHours.toFixed(1)
-        }}</strong></span
+        >Операционное влияние:
+        <strong class="text-foreground tabular-nums">{{ summary.impactHours.toFixed(1) }}</strong>
+        ч</span
       >
       <span
-        >Потери:
-        <strong class="text-foreground tabular-nums"
+        >Техническая недоступность:
+        <strong class="text-foreground tabular-nums">{{ summary.techHours.toFixed(1) }}</strong>
+        ч</span
+      >
+      <span
+        >Потери процесса:
+        <strong class="text-destructive tabular-nums"
           >{{ summary.loss.toLocaleString('ru-RU') }} ₽</strong
         ></span
       >
@@ -372,6 +451,7 @@ function exportCsv(): void {
           <TableHeader>
             <TableRow>
               <TableHead>Инцидент</TableHead>
+              <TableHead>Тип интервала</TableHead>
               <TableHead>Объект · зона</TableHead>
               <TableHead>Робот</TableHead>
               <TableHead>Начало</TableHead>
@@ -380,12 +460,11 @@ function exportCsv(): void {
               <TableHead>Характер</TableHead>
               <TableHead>Причина</TableHead>
               <TableHead>Статус</TableHead>
-              <TableHead>Ставка</TableHead>
-              <TableHead>Потери</TableHead>
+              <TableHead>Формула потерь</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            <TableEmpty v-if="filtered.length === 0" :colspan="11">
+            <TableEmpty v-if="filtered.length === 0" :colspan="12">
               По выбранным фильтрам интервалов нет.
             </TableEmpty>
             <TableRow
@@ -397,6 +476,21 @@ function exportCsv(): void {
               <TableCell class="text-xs text-primary py-2 px-3">{{
                 incidentNumber(dt.incidentId)
               }}</TableCell>
+              <TableCell class="py-2 px-3">
+                <span
+                  class="text-xs rounded px-1.5 py-0.5"
+                  :class="
+                    dt.intervalType === 'OPERATIONAL_IMPACT'
+                      ? 'bg-destructive/15 text-destructive'
+                      : 'bg-muted text-muted-foreground'
+                  "
+                  >{{
+                    dt.intervalType === 'OPERATIONAL_IMPACT'
+                      ? 'Операционное влияние'
+                      : 'Техническая недоступность'
+                  }}</span
+                >
+              </TableCell>
               <TableCell class="text-xs py-2 px-3"
                 >{{ siteName(dt.siteId)
                 }}<span v-if="dt.zoneName" class="text-muted-foreground"> · {{ dt.zoneName }}</span>
@@ -425,12 +519,19 @@ function exportCsv(): void {
                   >{{ DOWNTIME_STATUS_RU[dt.confirmationStatus] }}</span
                 >
               </TableCell>
-              <TableCell class="text-xs tabular-nums text-muted-foreground py-2 px-3"
-                >{{ dt.ratePerHour.toLocaleString('ru-RU') }} ₽/ч</TableCell
-              >
-              <TableCell class="text-xs font-medium tabular-nums py-2 px-3">{{
-                dt.lossRubles > 0 ? `${dt.lossRubles.toLocaleString('ru-RU')} ₽` : '—'
-              }}</TableCell>
+              <TableCell class="text-xs tabular-nums py-2 px-3 whitespace-nowrap">
+                <span v-if="dt.lossRubles > 0" class="font-medium"
+                  >{{ (dt.accountableDurationSeconds / 3600).toFixed(2) }} ч ×
+                  {{ dt.ratePerHour.toLocaleString('ru-RU') }} ₽/ч =
+                  {{ dt.lossRubles.toLocaleString('ru-RU') }} ₽</span
+                >
+                <span
+                  v-else-if="dt.intervalType === 'TECHNICAL_UNAVAILABLE'"
+                  class="text-muted-foreground"
+                  >без начисления потерь</span
+                >
+                <span v-else class="text-muted-foreground">—</span>
+              </TableCell>
             </TableRow>
           </TableBody>
         </Table>
