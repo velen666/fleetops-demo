@@ -207,6 +207,51 @@ test('ACC-008: реестр событий показывает канониче
   expect(body).not.toMatch(/inc-\d{3}/)
 })
 
+test('сценарий v1.1 шаг 8: руководитель эксплуатации создаёт сервисное действие', async ({
+  page,
+}) => {
+  await loginAs(page, 'Руководитель эксплуатации', 'portfolio')
+  await page.goto(`${BASE}/incidents`)
+  await page.locator('tbody tr', { hasText: 'INC-2026-0033' }).first().click()
+  await page.waitForURL(/\/incidents\//, { timeout: 10_000 })
+  await expect(page.locator('button', { hasText: 'Создать действие' })).toBeVisible()
+})
+
+test('ACC-004 (регрессия): суточный overlay отбрасывается и не ломает контрольные суммы', async ({
+  page,
+}) => {
+  await resetDemo(page)
+  // Имитируем overlay прошлых суток: чужая правка с меткой старой даты.
+  await page.evaluate(async () => {
+    const db = await indexedDB.open('fleetops-demo')
+    await new Promise((r) => {
+      db.onsuccess = r
+    })
+    const tx = db.result.transaction('overlay', 'readwrite')
+    tx.objectStore('overlay').put(
+      {
+        replaced: { incidents: { 'inc-033': { id: 'inc-033', coordinatorName: 'Прошлые сутки' } } },
+        appended: {},
+        timelineAppend: [],
+        baseDate: '2000-01-01',
+        schemaVersion: 1,
+      },
+      'data',
+    )
+    await new Promise((r) => {
+      tx.oncomplete = r
+    })
+  })
+  await page.goto(`${BASE}/incidents`)
+  await page.locator('tbody tr', { hasText: 'INC-2026-0033' }).first().click()
+  await page.waitForURL(/\/incidents\//, { timeout: 10_000 })
+  // Правка суточной давности не применена: живой инцидент снова
+  // без координатора, сценарий начинается с чистого состояния.
+  const body = (await page.locator('body').textContent()) ?? ''
+  expect(body).not.toContain('Прошлые сутки')
+  await expect(page.getByText('Следующее действие:').first()).toBeVisible()
+})
+
 test.afterEach(async ({ page }) => {
   if (!page.isClosed()) {
     await page.goto(`${BASE}/incidents`).catch(() => {})

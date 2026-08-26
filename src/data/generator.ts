@@ -1794,7 +1794,9 @@ export function generateDemoData() {
       incidentId: incId,
       timestamp: detected,
       eventType: 'EVENT',
-      summary: `Событие: ${t.type} (${t.source === 'AUTOMATIC' ? 'авто' : 'ручной ввод'})`,
+      // Видовой ярлык (eventType) рендерится отдельно — префикс в summary
+      // давал склейку «СобытиеСобытие: …» (Отчёт приёмки §4.3, P2).
+      summary: `${t.type} (${t.source === 'AUTOMATIC' ? 'авто' : 'ручной ввод'})`,
       actorName: t.source === 'AUTOMATIC' ? 'FleetOps' : 'Елена Смирнова',
       isAutomatic: t.source === 'AUTOMATIC',
       details: null,
@@ -1805,7 +1807,7 @@ export function generateDemoData() {
       incidentId: incId,
       timestamp: opened,
       eventType: 'CREATED',
-      summary: `Инцидент ${num} создан`,
+      summary: `${num} создан`,
       actorName: t.source === 'AUTOMATIC' ? 'FleetOps (корреляция)' : 'Елена Смирнова (оператор)',
       isAutomatic: t.source === 'AUTOMATIC',
       details: null,

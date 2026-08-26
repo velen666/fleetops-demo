@@ -12,7 +12,7 @@ export default defineConfig({
   timeout: 90_000,
   outputDir: join(tmpdir(), 'opencode', 'pw-demo-results'),
   webServer: {
-    command: 'pnpm dev --port 5180 --strictPort',
+    command: 'npm run dev -- --port 5180 --strictPort',
     url: 'http://localhost:5180',
     reuseExistingServer: true,
     timeout: 60_000,

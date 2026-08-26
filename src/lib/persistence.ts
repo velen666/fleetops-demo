@@ -17,6 +17,13 @@ export interface OverlayData {
   appended: Record<string, Array<Record<string, unknown>>>
   /** Записи истории, добавленные пользователем (по incidentId). */
   timelineAppend: Array<Record<string, unknown>>
+  /**
+   * Локальная дата генерации базового набора (yyyy-mm-dd). База
+   * перегенерируется ежедневно (daysAgo(0) → «сегодня»), поэтому overlay
+   * прошлых суток с абсолютными метками ломает сценарное время и
+   * контрольные суммы — при несовпадении даты overlay отбрасывается.
+   */
+  baseDate?: string
   /** Версия схемы overlay. */
   schemaVersion: 1
 }

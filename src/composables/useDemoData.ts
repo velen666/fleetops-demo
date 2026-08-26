@@ -84,9 +84,27 @@ function mergeOverlay(base: OverlayData): void {
   timeline.value = [...data.timeline, ...appendedTl.filter((t) => !baseIds.has(t.id))].slice()
 }
 
+// База генерируется от «сегодня» (daysAgo(0)); ключ сутки, когда она собрана.
+function baseDateKey(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate(),
+  ).padStart(2, '0')}`
+}
+
 void loadOverlay().then((loaded) => {
-  overlay.value = loaded
-  mergeOverlay(loaded)
+  const anchor = baseDateKey()
+  if (loaded.baseDate === anchor) {
+    overlay.value = loaded
+    mergeOverlay(loaded)
+  } else {
+    // Overlay суточной давности (или без метки) содержит абсолютные метки
+    // прошлой сессии: сценарные смещения перестают давать контрольные
+    // 25 мин / 29 167 ₽ (Отчёт приёмки §12 — одинаковый результат каждого
+    // прогона). Сбрасываем к эталонному набору и перезаписываем якорь.
+    overlay.value = { ...emptyOverlay(), baseDate: anchor }
+    void saveOverlay(overlay.value)
+  }
   overlayReady.value = true
 })
 

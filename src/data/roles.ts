@@ -115,9 +115,11 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       'actions.recovery.confirm',
       'events.read',
       // Операционные действия вертикального пути (ТЗ v2.0 §3/§6):
-      // назначение и ввод резерва на карточке инцидента, чтение бэклога.
+      // назначение и ввод резерва, создание сервисного действия по
+      // повреждённому роботу (сценарий v1.1 шаг 8), чтение бэклога.
       'substitutions.create',
       'substitutions.confirm',
+      'actions.create',
       'maintenance.read',
       'maintenance.complete',
       'maintenance.return',
