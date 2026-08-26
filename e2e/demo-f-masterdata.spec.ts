@@ -44,11 +44,12 @@ test('F: site page — zones table, park tab, filtered jumps', async ({ page }) 
   await page.waitForURL(/\/sites\//, { timeout: 15_000 })
   await expect(page.getByText('Зоны объекта').first()).toBeVisible({ timeout: 10_000 })
 
-  // зоны: клик → инциденты объекта с текстом зоны в поиске
+  // зоны: клик → страница зоны (v2: мощность, роботы, инциденты зоны)
   const zoneRow = page.locator('main table tbody tr').first()
   if ((await zoneRow.count()) > 0) {
     await zoneRow.click()
-    await page.waitForURL(/\/incidents/, { timeout: 15_000 })
+    await page.waitForURL(/\/zones\//, { timeout: 15_000 })
+    await expect(page.getByText('Мощность зоны').first()).toBeVisible({ timeout: 10_000 })
   }
 
   // назад на объект: кнопки отфильтрованных переходов

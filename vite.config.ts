@@ -15,5 +15,9 @@ export default defineConfig({
     strictPort: false,
     host: true,
     allowedHosts: true,
+    watch: {
+      // e2e-артефакты не должны ронять watcher (EBUSY на .crdownload)
+      ignored: ['**/e2e-results/**', '**/e2e-screens/**'],
+    },
   },
 })

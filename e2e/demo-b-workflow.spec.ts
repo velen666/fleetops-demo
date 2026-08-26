@@ -29,17 +29,17 @@ async function resetDemo(page: Page): Promise<void> {
   }
 }
 
-test('сквозной разбор: очередь → причина → действие → восстановление → простой → закрытие', async ({
+test('сквозной разбор (v2 §6): координатор → безопасность → резерв → ввод → причина → сервис → возврат → закрытие', async ({
   page,
 }) => {
   await resetDemo(page)
 
-  // Очередь «Требуют разбора»
+  // Очередь «Требует разбора» → живой рабочий инцидент INC-2026-0033
   await page.goto(`${BASE}/incidents`)
-  await page.locator('button', { hasText: 'Требуют разбора' }).first().click()
+  await page.locator('button', { hasText: 'Требует разбора' }).first().click()
   await page.waitForTimeout(400)
 
-  const row = page.locator('tbody tr').first()
+  const row = page.locator('tbody tr', { hasText: 'INC-2026-0033' }).first()
   await expect(row).toBeVisible()
   await row.click()
   await page.waitForURL(/\/incidents\//, { timeout: 10_000 })
@@ -49,99 +49,116 @@ test('сквозной разбор: очередь → причина → де�
   await page.locator('button', { hasText: 'Назначить координатора' }).click()
   await page.locator('[role="dialog"] button', { hasText: 'Принять в работу' }).click()
   await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 5_000 })
-  await expect(page.getByText('Следующее действие:').first()).toBeVisible()
 
-  // 2. Предварительная причина
+  // 2. Безопасность (ТЗ §6 шаг 4)
+  await page.locator('button', { hasText: 'Обеспечить безопасность' }).click()
+  const safetyDlg = page.locator('[role="dialog"]')
+  await safetyDlg
+    .locator('textarea')
+    .fill('Зона C-12 ограждена, FMR-001 выведен с критического пути на сервисную стоянку')
+  await safetyDlg.locator('button', { hasText: 'Подтвердить безопасность' }).click()
+  await expect(safetyDlg).toBeHidden({ timeout: 5_000 })
+
+  // 3. Назначить резерв FMR-012 (шаг 5)
+  await page.locator('button', { hasText: 'Назначить резерв' }).click()
+  const subDlg = page.locator('[role="dialog"]')
+  await subDlg.getByRole('combobox', { name: /Резервный робот/ }).click()
+  await page.getByRole('option', { name: /FMR-012/ }).click()
+  await subDlg.locator('button', { hasText: 'Назначить', exact: true }).click()
+  await expect(subDlg).toBeHidden({ timeout: 5_000 })
+
+  // 4. Ввод резерва = точка «Процесс восстановлен» (шаг 6): влияние закрыто
+  await page.locator('button', { hasText: 'Подтвердить ввод резерва' }).click()
+  await expect(page.getByText('Процесс восстановлен, сервис продолжается').first()).toBeVisible({
+    timeout: 5_000,
+  })
+  await expect(page.getByText('начисление потерь процесса прекращено').first()).toBeVisible()
+
+  // 5. Предварительная причина → уточнить → финальная (CA-041 столкновение)
   await page.locator('button', { hasText: 'Предварительная причина' }).click()
   const causeDlg = page.locator('[role="dialog"]')
   await causeDlg.locator('button[role="combobox"]').first().click()
-  await page.getByRole('option', { name: /CA-045/ }).click()
+  await page.getByRole('option', { name: /CA-041/ }).click()
   await causeDlg
     .locator('textarea')
     .first()
     .fill(
-      'На оптическом окне переднего лидара слой складской пыли; качество сканирования снижено, остановка в пыльной зоне.',
+      'Повторный контакт с погрузчиком на пересечении C-12: повреждён правый привод; акт и фото приложены.',
     )
   await causeDlg.locator('button', { hasText: 'Записать' }).click()
   await expect(causeDlg).toBeHidden({ timeout: 5_000 })
-  await expect(page.locator('button', { hasText: 'Уточнить причину' })).toBeVisible({
-    timeout: 5_000,
-  })
 
-  // 3. Уточнить причину
   await page.locator('button', { hasText: 'Уточнить причину' }).click()
   const dlg2 = page.locator('[role="dialog"]')
   await dlg2
     .locator('textarea')
     .first()
-    .fill(
-      'Осмотр подтвердил: пыль на оптическом окне лидара; после очистки контрольный маршрут выполнен без потери локализации.',
-    )
+    .fill('Диагностика подтвердила повреждение приводного модуля правого привода после контакта.')
   await dlg2.locator('button', { hasText: 'Записать' }).click()
   await expect(dlg2).toBeHidden({ timeout: 5_000 })
-  await expect(page.locator('button', { hasText: 'Подтвердить причину' })).toBeVisible({
-    timeout: 5_000,
-  })
 
-  // 4. Финальная причина
   await page.locator('button', { hasText: 'Подтвердить причину' }).click()
   const dlg3 = page.locator('[role="dialog"]')
   await dlg3
     .locator('textarea')
     .first()
-    .fill(
-      'Финально: загрязнение оптического окна лидара складской пылью; зона включена в чек-лист уборки смены.',
-    )
+    .fill('Финально: столкновение со складской техникой; требуется замена приводного модуля.')
   await dlg3.locator('button', { hasText: 'Записать' }).click()
   await expect(dlg3).toBeHidden({ timeout: 5_000 })
 
-  // 5. Создать действие / ТОиР
+  // 6. Сервисное действие + результат (шаги 7–8)
   await page.locator('button', { hasText: 'Создать действие' }).click()
   const dlg4 = page.locator('[role="dialog"]')
-  await dlg4.locator('input').first().fill('Очистка лидара и контрольный маршрут')
+  await dlg4.locator('input').first().fill('Замена приводного модуля FMR-001')
   await dlg4
     .locator('textarea')
-    .fill('Очистить оптическое окно, проверить крепление, выполнить контрольный маршрут с грузом')
+    .fill('Заменить приводной модуль, затянуть крепёж моментом, контрольный маршрут с грузом')
   await dlg4.getByLabel('Исполнитель *').fill('Сервисный инженер')
   await dlg4.locator('button', { hasText: 'Создать', exact: true }).click()
   await expect(dlg4).toBeHidden({ timeout: 5_000 })
 
-  // 6. Результат действия — кнопка на вкладке «Действия»
   await page.locator('[role="tab"]', { hasText: 'Действия' }).click()
   await page.locator('button', { hasText: 'Зафиксировать результат' }).first().click()
   const dlg5 = page.locator('[role="dialog"]')
-  await dlg5.locator('textarea').fill('Окно очищено; контрольный маршрут по зоне без ошибок')
+  await dlg5.locator('textarea').fill('Модуль заменён; контрольный маршрут по зоне C-12 без ошибок')
   await dlg5.locator('button', { hasText: 'Зафиксировать' }).click()
   await expect(dlg5).toBeHidden({ timeout: 5_000 })
 
-  // 7. Восстановление (авто-закрытие интервала)
+  // 7. Восстановление + решение по простою
   await page.locator('button', { hasText: 'Подтвердить восстановление' }).click()
   const dlg6 = page.locator('[role="dialog"]')
   await dlg6.locator('textarea').fill('Контрольный маршрут с грузом выполнен без ошибок')
   await dlg6.locator('button', { hasText: 'Подтвердить восстановление' }).click()
   await expect(dlg6).toBeHidden({ timeout: 5_000 })
 
-  // 8. Решение по простою — только если интервал ещё не решён (у INC-0030
-  // downtime подтверждён заранее, кнопки нет — шаг пропускается)
   const decideBtn = page.locator('button', { hasText: 'Решение по простою' })
   if (await decideBtn.isVisible().catch(() => false)) {
     await decideBtn.click()
     const dlg7 = page.locator('[role="dialog"]')
-    await dlg7.locator('textarea').fill('Резерв не назначался; влияние не компенсировано')
+    await dlg7.locator('textarea').fill('Влияние подтверждено по факту до ввода резерва')
     await dlg7.locator('button', { hasText: 'Принять решение' }).click()
     await expect(dlg7).toBeHidden({ timeout: 5_000 })
   }
 
+  // 8. Возврат робота в парк = точка 2 (шаг 9) — обязателен до закрытия
+  await page.locator('button', { hasText: 'Вернуть робота в парк' }).click()
+  await expect(page.getByText('Техническая недоступность закрыта').first()).toBeVisible({
+    timeout: 5_000,
+  })
+
   // 9. Закрыть инцидент
   const closeBtn = page.locator('button', { hasText: 'Закрыть инцидент' })
-  await expect(closeBtn).toBeEnabled({ timeout: 5_000 })
+  await expect(closeBtn).toBeEnabled({ timeout: 10_000 })
   await closeBtn.click()
 
-  // История: ручные записи + авто-закрытие интервала
+  // История: ручные записи + авто-записи + закрытие
   await page.locator('[role="tab"]', { hasText: 'История' }).click()
   const historyText = await page.locator('body').textContent()
   expect(historyText).toContain('Причина подтверждена')
   expect(historyText).toContain('(авто)')
+  expect(historyText).toContain('Безопасность обеспечена')
+  expect(historyText).toContain('мощность зоны восстановлена')
+  expect(historyText).toContain('возвращён в парк')
   expect(historyText).toContain('Инцидент закрыт')
   await page.screenshot({ path: 'e2e-screens/demo-b-full-cycle.png', fullPage: true })
 })

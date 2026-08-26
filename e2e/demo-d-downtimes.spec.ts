@@ -13,7 +13,9 @@ test('D: downtimes register — filters, quick views, summary matches rows', asy
   // быстрое представление «Требуют подтверждения»
   await page.locator('button', { hasText: 'Требуют подтверждения' }).first().click()
   await page.waitForTimeout(400)
-  const badgeTexts = await page.locator('tbody span[class*="rounded"]').allTextContents()
+  // статусы в колонке «Статус» (бейджи статуса, не типа интервала)
+  const statusCells = page.locator('tbody tr td:nth-child(10) span[class*="rounded"]')
+  const badgeTexts = await statusCells.allTextContents()
   expect(badgeTexts.length).toBeGreaterThan(0)
   for (const b of badgeTexts) {
     expect(['Предложен', 'Ожидает подтверждения']).toContain(b.trim())
@@ -41,8 +43,8 @@ test('D: filter by cause goes through the linked incident', async ({ page }) => 
   await page.goto('http://localhost:5180/downtimes')
   await page.waitForTimeout(800)
 
-  // выбираем причину CA-045 (загрязнение лидара)
-  const causeSelect = page.locator('button[role="combobox"]').nth(2)
+  // выбираем причину CA-045 (загрязнение лидара) — селект по aria-label
+  const causeSelect = page.getByRole('combobox', { name: 'Фильтр по причине' })
   await causeSelect.click()
   await page.getByRole('option', { name: /CA-045/ }).click()
   await page.waitForTimeout(400)

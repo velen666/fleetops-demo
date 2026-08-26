@@ -349,7 +349,9 @@ function exportCsv(): void {
       <div class="space-y-1">
         <span class="text-xs text-muted-foreground block">Причина (через инцидент)</span>
         <Select v-model="filterCause" aria-label="Фильтр по причине">
-          <SelectTrigger class="w-[220px]"><SelectValue /></SelectTrigger>
+          <SelectTrigger class="w-[220px]" aria-label="Фильтр по причине"
+            ><SelectValue
+          /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Все</SelectItem>
             <SelectItem v-for="c in causeOptions" :key="c" :value="c">{{
