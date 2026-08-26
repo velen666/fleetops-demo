@@ -417,6 +417,8 @@ function openCauseDetail(code: string): void {
 }
 
 function goIncident(id: string): void {
+  // Переход из диалога детализации закрывает его (смена фокуса внимания).
+  causeDetail.value = null
   router.push({ name: 'incident-details', params: { incidentId: id } })
 }
 

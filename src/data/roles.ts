@@ -109,6 +109,11 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       'actions.read',
       'actions.assign',
       'events.read',
+      // Операционные действия вертикального пути (ТЗ v2.0 §3/§6):
+      // назначение и ввод резерва на карточке инцидента, чтение бэклога.
+      'substitutions.create',
+      'substitutions.confirm',
+      'maintenance.read',
       'economics.read',
       'reports.read',
       'reports.export',

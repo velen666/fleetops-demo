@@ -30,14 +30,31 @@ import {
 import { Bot, Radio, Cpu, MapPin, AlertTriangle, Clock, TrendingDown } from 'lucide-vue-next'
 import type { Robot } from '@/types/domain'
 import { incidentTypeLabel, causeLabel } from '@/data/generator'
-import { INCIDENT_STATUS_RU, INCIDENT_STATUS_CLASS, sourceInstanceLabel } from '@/data/labels'
+import {
+  INCIDENT_STATUS_RU,
+  INCIDENT_STATUS_CLASS,
+  FLEET_STATE_RU,
+  FLEET_STATE_CLASS,
+  sourceInstanceLabel,
+} from '@/data/labels'
+import { Button } from '@/components/ui/button'
 
 const { robots, sites, incidents, downtimes, maintenance } = useDemoData()
 
 const selectedRobot = ref<Robot | null>(null)
 const filterSite = ref('all')
 const filterStatus = ref('all')
+const filterFleet = ref('all')
 const searchText = ref('')
+
+// Быстрые срезы парка (ТЗ v2.0 §5.2): резерв и сервисный контур.
+const REPAIR_STATES = ['IN_REPAIR', 'AWAITING_REPAIR', 'DIAGNOSTICS', 'EMERGENCY_STOP', 'TEST_RUN']
+const FLEET_FILTERS: Array<{ key: string; label: string }> = [
+  { key: 'reserve', label: 'Резерв' },
+  { key: 'repair', label: 'Ремонт' },
+  { key: 'working', label: 'Работают' },
+  { key: 'charging', label: 'Зарядка' },
+]
 
 const STATUS_RU: Record<string, string> = {
   ACTIVE: 'Активен',
@@ -73,6 +90,22 @@ const filteredRobots = computed(() => {
   let result = robots.value
   if (filterSite.value !== 'all') result = result.filter((r) => r.siteId === filterSite.value)
   if (filterStatus.value !== 'all') result = result.filter((r) => r.status === filterStatus.value)
+  switch (filterFleet.value) {
+    case 'reserve':
+      result = result.filter((r) => r.fleetState === 'RESERVE')
+      break
+    case 'repair':
+      result = result.filter((r) => REPAIR_STATES.includes(r.fleetState))
+      break
+    case 'working':
+      result = result.filter((r) => r.fleetState === 'WORKING')
+      break
+    case 'charging':
+      result = result.filter((r) => r.fleetState === 'CHARGING')
+      break
+    default:
+      break
+  }
   if (searchText.value.trim()) {
     const s = searchText.value.trim().toLowerCase()
     result = result.filter(
@@ -123,6 +156,19 @@ function availClass(v: number): string {
 
 <template>
   <div class="space-y-4">
+    <!-- Быстрые срезы парка: резерв / ремонт (состояния §5.2) -->
+    <div class="flex flex-wrap gap-2">
+      <Button
+        v-for="f in FLEET_FILTERS"
+        :key="f.key"
+        :variant="filterFleet === f.key ? 'default' : 'outline'"
+        size="sm"
+        class="min-h-9"
+        @click="filterFleet = filterFleet === f.key ? 'all' : f.key"
+        >{{ f.label }}</Button
+      >
+    </div>
+
     <!-- Filters -->
     <div class="flex flex-wrap items-end gap-3">
       <div class="space-y-1">
@@ -167,7 +213,7 @@ function availClass(v: number): string {
               <TableHead class="py-3 px-4">Модель</TableHead>
               <TableHead class="py-3 px-4">Вендор</TableHead>
               <TableHead class="py-3 px-4">Объект</TableHead>
-              <TableHead class="py-3 px-4">Статус</TableHead>
+              <TableHead class="py-3 px-4">Состояние парка</TableHead>
               <TableHead class="py-3 px-4">Доступность</TableHead>
               <TableHead class="py-3 px-4">Инцидентов</TableHead>
               <TableHead class="py-3 px-4">Простой</TableHead>
@@ -188,12 +234,8 @@ function availClass(v: number): string {
               <TableCell class="py-3 px-4">
                 <span
                   class="text-xs rounded px-1.5 py-0.5"
-                  :class="{
-                    'bg-success/15 text-success': robot.status === 'ACTIVE',
-                    'bg-warning/15 text-warning': robot.status === 'MAINTENANCE',
-                    'bg-muted text-muted-foreground': robot.status === 'DISABLED',
-                  }"
-                  >{{ STATUS_RU[robot.status] }}</span
+                  :class="FLEET_STATE_CLASS[robot.fleetState]"
+                  >{{ FLEET_STATE_RU[robot.fleetState] }}</span
                 >
               </TableCell>
               <TableCell

@@ -6,8 +6,48 @@ import { AlertTriangle, Clock, TrendingDown, Activity, ArrowRight, MapPin } from
 import { useRouter } from 'vue-router'
 import { incidentTypeLabel, causeLabel, CAUSE_CATALOG } from '@/data/generator'
 
-const { incidents, downtimes, stats, sites } = useDemoData()
+const { incidents, downtimes, stats, sites, robots, maintenance } = useDemoData()
 const router = useRouter()
+
+// ─── Срез по объектам (зона ответственности руководящих ролей, ТЗ v2.0 §3) ──
+const siteRows = computed(() =>
+  sites.value
+    .map((s) => {
+      const siteRobots = robots.value.filter((r) => r.siteId === s.id)
+      const working = siteRobots.filter((r) => r.fleetState === 'WORKING').length
+      const reserve = siteRobots.filter((r) => r.fleetState === 'RESERVE').length
+      const service = siteRobots.filter((r) =>
+        ['IN_REPAIR', 'AWAITING_REPAIR', 'DIAGNOSTICS', 'EMERGENCY_STOP'].includes(r.fleetState),
+      ).length
+      const impact = downtimes.value.filter(
+        (d) =>
+          d.siteId === s.id &&
+          d.intervalType === 'OPERATIONAL_IMPACT' &&
+          d.confirmationStatus === 'CONFIRMED',
+      )
+      const activeInc = incidents.value.filter(
+        (i) => i.siteId === s.id && i.status !== 'CLOSED',
+      ).length
+      const backlog = maintenance.value.filter(
+        (m) => m.siteId === s.id && !['DONE', 'RESULT_CONFIRMED', 'CANCELLED'].includes(m.status),
+      ).length
+      return {
+        id: s.id,
+        name: s.name,
+        rate: s.ratePerHour,
+        park: siteRobots.length,
+        working,
+        reserve,
+        reserveNorm: s.reserveNorm,
+        service,
+        activeInc,
+        backlog,
+        impactHours: impact.reduce((sum, d) => sum + d.accountableDurationSeconds, 0) / 3600,
+        loss: impact.reduce((sum, d) => sum + d.lossRubles, 0),
+      }
+    })
+    .sort((a, b) => b.loss - a.loss),
+)
 
 // Live dashboard
 const liveOffset = ref({ downtimeSeconds: 0, lossRubles: 0 })
@@ -140,6 +180,72 @@ const classificationDetail = computed(() => ({
         </CardContent>
       </Card>
     </div>
+
+    <!-- Зона ответственности: сравнение объектов (руководящие роли) -->
+    <Card>
+      <CardHeader
+        ><CardTitle>По объектам</CardTitle>
+        <p class="text-xs text-muted-foreground">
+          Клик по объекту — страница объекта (зоны, парк, инциденты, сервис)
+        </p></CardHeader
+      >
+      <CardContent class="p-0">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b text-left text-muted-foreground">
+                <th class="py-2 pr-4 font-medium">Объект</th>
+                <th class="py-2 pr-4 font-medium">Ставка</th>
+                <th class="py-2 pr-4 font-medium">Парк (работает)</th>
+                <th class="py-2 pr-4 font-medium">Резерв</th>
+                <th class="py-2 pr-4 font-medium">Сервис</th>
+                <th class="py-2 pr-4 font-medium">Активные инциденты</th>
+                <th class="py-2 pr-4 font-medium">Бэклог работ</th>
+                <th class="py-2 pr-4 font-medium">Влияние, ч</th>
+                <th class="py-2 font-medium">Потери за период</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="s in siteRows"
+                :key="s.id"
+                class="card-interactive cursor-pointer border-b last:border-0"
+                @click="router.push({ name: 'site-details', params: { siteId: s.id } })"
+              >
+                <td class="py-2.5 pr-4 font-medium">{{ s.name }}</td>
+                <td class="py-2.5 pr-4 tabular-nums text-muted-foreground">
+                  {{ s.rate.toLocaleString('ru-RU') }} ₽/ч
+                </td>
+                <td class="py-2.5 pr-4 tabular-nums">
+                  {{ s.park }}
+                  <span class="text-success">({{ s.working }})</span>
+                </td>
+                <td
+                  class="py-2.5 pr-4 tabular-nums"
+                  :class="s.reserve < s.reserveNorm ? 'text-warning' : ''"
+                >
+                  {{ s.reserve }} / {{ s.reserveNorm }}
+                </td>
+                <td class="py-2.5 pr-4 tabular-nums" :class="s.service > 0 ? 'text-warning' : ''">
+                  {{ s.service }}
+                </td>
+                <td
+                  class="py-2.5 pr-4 tabular-nums"
+                  :class="s.activeInc > 0 ? 'text-orange-500' : ''"
+                >
+                  {{ s.activeInc }}
+                </td>
+                <td class="py-2.5 pr-4 tabular-nums">{{ s.backlog }}</td>
+                <td class="py-2.5 pr-4 tabular-nums">{{ s.impactHours.toFixed(1) }}</td>
+                <td class="py-2.5 tabular-nums text-destructive font-medium">
+                  {{ s.loss.toLocaleString('ru-RU') }} ₽
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
 
     <!-- What needs attention -->
     <Card>
