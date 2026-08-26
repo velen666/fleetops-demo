@@ -1202,6 +1202,8 @@ function closeIncident(incidentId: string, actorName: string): GuardResult {
   if (!g.ok) return g
   const inc = incidents.value.find((i) => i.id === incidentId)
   if (!inc) return { ok: false, reason: 'Инцидент не найден' }
+  // Машина состояний (G2): закрытое нельзя закрыть повторно.
+  if (inc.status === 'CLOSED') return { ok: false, reason: 'Инцидент уже закрыт' }
   if (!inc.safetyConfirmedAt) return { ok: false, reason: 'Безопасность зоны не подтверждена' }
   if (inc.causeMaturity !== 'FINAL')
     return { ok: false, reason: 'Финальная причина не подтверждена' }
@@ -1236,6 +1238,10 @@ function closeIncident(incidentId: string, actorName: string): GuardResult {
 function reopenIncident(incidentId: string, reason: string, actorName: string): GuardResult {
   const g = guard('incidents.state.manage')
   if (!g.ok) return g
+  const inc = incidents.value.find((i) => i.id === incidentId)
+  if (!inc) return { ok: false, reason: 'Инцидент не найден' }
+  // Машина состояний (G2): переоткрыть можно только закрытый.
+  if (inc.status !== 'CLOSED') return { ok: false, reason: 'Инцидент не закрыт' }
   const at = clockNow(incidentId)
   replaceIncident(incidentId, { status: 'IN_PROGRESS', closedAt: null })
   log(incidentId, 'REOPENED', `Инцидент переоткрыт: ${reason}`, actorName, false, { reason }, at)

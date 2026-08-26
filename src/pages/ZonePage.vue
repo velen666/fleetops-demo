@@ -4,6 +4,12 @@ import { useRoute, useRouter } from 'vue-router'
 import { useDemoData } from '@/composables/useDemoData'
 import { causeLabel } from '@/data/generator'
 import {
+  confirmedLossRubles,
+  confirmedOf,
+  impactSeconds,
+  techUnavailableSeconds,
+} from '@/data/metrics'
+import {
   FLEET_STATE_RU,
   FLEET_STATE_CLASS,
   INCIDENT_STATUS_RU,
@@ -76,24 +82,13 @@ const zoneDowntimes = computed(() =>
   ),
 )
 
-const impact = computed(() =>
-  zoneDowntimes.value.filter(
-    (d) =>
-      d.intervalType === 'OPERATIONAL_IMPACT' &&
-      (d.confirmationStatus === 'CONFIRMED' || d.confirmationStatus === 'ADJUSTED'),
-  ),
-)
+/** Подтверждённые интервалы операционного влияния (для счётчика строк). */
+const impact = computed(() => confirmedOf(zoneDowntimes.value, 'OPERATIONAL_IMPACT'))
 
-const loss = computed(() => impact.value.reduce((s, d) => s + d.lossRubles, 0))
-const impactHours = computed(
-  () => impact.value.reduce((s, d) => s + d.accountableDurationSeconds, 0) / 3600,
-)
-const techHours = computed(
-  () =>
-    zoneDowntimes.value
-      .filter((d) => d.intervalType === 'TECHNICAL_UNAVAILABLE' && d.intervalState === 'CLOSED')
-      .reduce((s, d) => s + d.accountableDurationSeconds, 0) / 3600,
-)
+// Единые селекторы metrics.ts (ACC-023): локальные копии формул запрещены.
+const loss = computed(() => confirmedLossRubles(zoneDowntimes.value))
+const impactHours = computed(() => impactSeconds(zoneDowntimes.value) / 3600)
+const techHours = computed(() => techUnavailableSeconds(zoneDowntimes.value) / 3600)
 
 const topCauses = computed(() => {
   const by = new Map<string, number>()

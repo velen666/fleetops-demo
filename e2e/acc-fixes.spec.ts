@@ -252,6 +252,25 @@ test('ACC-004 (регрессия): суточный overlay отбрасыва�
   await expect(page.getByText('Следующее действие:').first()).toBeVisible()
 })
 
+test('ACC-012: возврат из инцидента восстанавливает детализацию причины', async ({ page }) => {
+  await loginAs(page, 'Администратор', '/$|portfolio')
+  await page.goto(`${BASE}/analytics?view=fleet`)
+  // Открыть детализацию крупнейшей причины (столкновение).
+  const row = page.locator('tbody tr', { hasText: 'Столкновение' }).first()
+  await row.getByRole('button', { name: 'Инциденты' }).click()
+  const dlg = page.locator('[role="dialog"]')
+  await expect(dlg).toBeVisible({ timeout: 5_000 })
+  await expect(page.url()).toContain('detail=')
+  // Провалиться в инцидент и вернуться назад.
+  await dlg.locator('tbody tr').first().click()
+  await page.waitForURL(/\/incidents\//, { timeout: 10_000 })
+  await page.goBack()
+  // Детализация причины восстановлена из URL вместе с фильтрами.
+  await expect(page.locator('[role="dialog"]')).toBeVisible({ timeout: 5_000 })
+  const body = (await page.locator('body').textContent())?.replace(/\u00A0/g, ' ') ?? ''
+  expect(body).toContain('Столкновение')
+})
+
 test.afterEach(async ({ page }) => {
   if (!page.isClosed()) {
     await page.goto(`${BASE}/incidents`).catch(() => {})

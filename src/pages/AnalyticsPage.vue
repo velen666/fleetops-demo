@@ -65,6 +65,7 @@ watch([filterSite, filterCause, filterZone, filterRobot, view], ([site, cause, z
       ...(cause !== 'all' ? { cause } : {}),
       ...(zone !== 'all' ? { zone } : {}),
       ...(robot !== 'all' ? { robot } : {}),
+      ...(typeof route.query.detail === 'string' ? { detail: route.query.detail } : {}),
       view: v,
     },
   })
@@ -426,7 +427,12 @@ const breakdownRows = computed(() => {
 
 // ─── Детализация причины (32.3) ──────────────────────────────────────────────
 
-const causeDetail = ref<string | null>(null)
+// ACC-012: выбранная причина — часть URL (?detail=CA-041): возврат из
+// инцидента (browser back / «Назад») восстанавливает детализацию и фильтры.
+const causeDetail = computed<string | null>(() => {
+  const q = route.query.detail
+  return typeof q === 'string' && q.length > 0 ? q : null
+})
 const causeDetailRow = computed(() =>
   causeDetail.value ? (causeRows.value.find((r) => r.code === causeDetail.value) ?? null) : null,
 )
@@ -437,12 +443,17 @@ const causeDetailIncidents = computed(() =>
 )
 
 function openCauseDetail(code: string): void {
-  causeDetail.value = code
+  void router.push({ query: { ...route.query, detail: code } })
+}
+
+function closeCauseDetail(): void {
+  const { detail: _drop, ...rest } = route.query
+  void router.replace({ query: rest })
 }
 
 function goIncident(id: string): void {
-  // Переход из диалога детализации закрывает его (смена фокуса внимания).
-  causeDetail.value = null
+  // Детализация остаётся в history (detail в query): возврат восстанавливает
+  // выбранную причину и фильтры (ACC-012).
   router.push({ name: 'incident-details', params: { incidentId: id } })
 }
 
@@ -961,7 +972,7 @@ function exportBreakdownCsv(): void {
     </Card>
 
     <!-- Детализация причины (32.3) -->
-    <Dialog :open="Boolean(causeDetail)" @update:open="(v) => !v && (causeDetail = null)">
+    <Dialog :open="Boolean(causeDetail)" @update:open="(v) => !v && closeCauseDetail()">
       <DialogContent
         class="w-[90%] max-w-[1100px] sm:max-w-[1100px] max-h-[85vh] flex flex-col gap-0 p-0"
       >
