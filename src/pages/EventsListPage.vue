@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useDemoData } from '@/composables/useDemoData'
+import { useTenantScope } from '@/composables/useTenantScope'
 import { useAuthStore } from '@/stores/auth'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -61,8 +62,13 @@ const regRobotId = ref('__none__')
 const regType = ref('')
 const regDescription = ref('')
 
+// Tenant-модель (§3): события только разрешённых объектов.
+const scope = useTenantScope()
+const scopedEvents = scope.events(events.value)
+const scopedSites = scope.sites(sites.value)
+
 const filteredEvents = computed(() =>
-  events.value.filter((e) => {
+  scopedEvents.value.filter((e) => {
     if (filterStatus.value !== 'all' && e.processingStatus !== filterStatus.value) return false
     if (filterSource.value !== 'all' && e.source !== filterSource.value) return false
     if (filterNeedsReview.value && e.processingStatus !== 'NEEDS_CLASSIFICATION') return false
@@ -414,7 +420,9 @@ function submitRegister(): void {
                 ><SelectValue placeholder="Выберите объект"
               /></SelectTrigger>
               <SelectContent>
-                <SelectItem v-for="s in sites" :key="s.id" :value="s.id">{{ s.name }}</SelectItem>
+                <SelectItem v-for="s in scopedSites" :key="s.id" :value="s.id">{{
+                  s.name
+                }}</SelectItem>
               </SelectContent>
             </Select>
           </div>

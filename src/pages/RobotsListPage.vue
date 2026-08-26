@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useDemoData } from '@/composables/useDemoData'
+import { useTenantScope } from '@/composables/useTenantScope'
 import { useRouter } from 'vue-router'
 const router = useRouter()
 import { Card, CardContent } from '@/components/ui/card'
@@ -40,6 +41,11 @@ import {
 import { Button } from '@/components/ui/button'
 
 const { robots, sites, incidents, downtimes, maintenance } = useDemoData()
+
+// Tenant-модель (§3): парк и фильтр объекта — только разрешённые.
+const scope = useTenantScope()
+const scopedRobots = scope.robots(robots.value)
+const scopedSites = scope.sites(sites.value)
 
 const selectedRobot = ref<Robot | null>(null)
 const filterSite = ref('all')
@@ -87,7 +93,7 @@ function availability(robotId: string): number {
 }
 
 const filteredRobots = computed(() => {
-  let result = robots.value
+  let result = scopedRobots.value
   if (filterSite.value !== 'all') result = result.filter((r) => r.siteId === filterSite.value)
   if (filterStatus.value !== 'all') result = result.filter((r) => r.status === filterStatus.value)
   switch (filterFleet.value) {
@@ -176,8 +182,8 @@ function availClass(v: number): string {
         <Select v-model="filterSite" aria-label="Фильтр по объекту">
           <SelectTrigger class="w-[180px]"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Все ({{ robots.length }})</SelectItem>
-            <SelectItem v-for="s in sites" :key="s.id" :value="s.id">{{ s.name }}</SelectItem>
+            <SelectItem value="all">Все ({{ scopedRobots.length }})</SelectItem>
+            <SelectItem v-for="s in scopedSites" :key="s.id" :value="s.id">{{ s.name }}</SelectItem>
           </SelectContent>
         </Select>
       </div>

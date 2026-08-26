@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { User } from '@/types/domain'
+import type { Site, User } from '@/types/domain'
 import { ROLE_DEFINITIONS, ROLE_USERS, type RoleCode } from '@/data/roles'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -20,6 +20,23 @@ export const useAuthStore = defineStore('auth', () => {
 
   function canAny(perms: string[]): boolean {
     return perms.some((p) => permissions.value.includes(p))
+  }
+
+  /**
+   * Tenant-модель (ТЗ v2.0 §3): зона ответственности роли.
+   * siteIds пользователя = разрешённые объекты; пусто — все объекты.
+   * Начальник склада видит только свой склад, руководящие роли — все.
+   */
+  const ALL_SITES = ['site-pod', 'site-obh', 'site-dom']
+  const allowedSiteIds = computed<string[]>(() => {
+    const ids = user.value?.siteIds ?? []
+    return ids.length > 0 ? ids : [...ALL_SITES]
+  })
+  /** Роль ограничена подмножеством объектов (не все три). */
+  const isSiteScoped = computed(() => allowedSiteIds.value.length < ALL_SITES.length)
+
+  function isSiteAllowed(siteId: string): boolean {
+    return allowedSiteIds.value.includes(siteId)
   }
 
   function loginAs(roleCode: RoleCode): void {
@@ -46,6 +63,9 @@ export const useAuthStore = defineStore('auth', () => {
     activeRoleCode,
     isAuthenticated,
     permissions,
+    allowedSiteIds,
+    isSiteScoped,
+    isSiteAllowed,
     can,
     canAny,
     loginAs,
@@ -53,3 +73,8 @@ export const useAuthStore = defineStore('auth', () => {
     restore,
   }
 })
+
+/** Помощник для типизации списка объектов вне стора. */
+export function filterSitesByScope(sites: Site[], allowed: string[]): Site[] {
+  return allowed.length === 0 ? sites : sites.filter((s) => allowed.includes(s.id))
+}

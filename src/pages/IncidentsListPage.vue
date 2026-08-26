@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useDemoData } from '@/composables/useDemoData'
+import { useTenantScope } from '@/composables/useTenantScope'
 import { incidentTypeLabel, causeLabel } from '@/data/generator'
 import { INCIDENT_STATUS_RU, INCIDENT_STATUS_CLASS } from '@/data/labels'
 import { useAuthStore } from '@/stores/auth'
@@ -176,16 +177,21 @@ const queues: Queue[] = [
   { key: 'all', label: 'Все', filter: () => true },
 ]
 
+// Tenant-модель (§3): база реестра и очередей — только разрешённые объекты роли.
+const scope = useTenantScope()
+const scopedIncidents = scope.incidents(incidents.value)
+const scopedSites = scope.sites(sites.value)
+
 const queueCounts = computed(() => {
   const counts: Record<string, number> = {}
   for (const q of queues) {
-    counts[q.key] = incidents.value.filter(q.filter).length
+    counts[q.key] = scopedIncidents.value.filter(q.filter).length
   }
   return counts
 })
 
 const filteredIncidents = computed(() => {
-  let result = incidents.value
+  let result = scopedIncidents.value
   if (activeQueue.value !== 'all') {
     const q = queues.find((x) => x.key === activeQueue.value)
     if (q) result = result.filter(q.filter)
@@ -410,7 +416,7 @@ function exportCsv(): void {
           <SelectTrigger class="w-[180px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Все</SelectItem>
-            <SelectItem v-for="s in sites" :key="s.id" :value="s.id">{{ s.name }}</SelectItem>
+            <SelectItem v-for="s in scopedSites" :key="s.id" :value="s.id">{{ s.name }}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -544,7 +550,9 @@ function exportCsv(): void {
               <Select v-model="createSite" aria-label="Объект">
                 <SelectTrigger class="min-h-10"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem v-for="s in sites" :key="s.id" :value="s.id">{{ s.name }}</SelectItem>
+                  <SelectItem v-for="s in scopedSites" :key="s.id" :value="s.id">{{
+                    s.name
+                  }}</SelectItem>
                 </SelectContent>
               </Select>
             </div>

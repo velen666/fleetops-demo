@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDemoData } from '@/composables/useDemoData'
+import { useTenantScope } from '@/composables/useTenantScope'
 import type { Incident } from '@/types/domain'
 import { causeLabel } from '@/data/generator'
 import { CAUSE_CATALOG } from '@/data/generator'
@@ -71,13 +72,20 @@ const causeOptions = computed(() => {
   return [...codes].sort()
 })
 
+// Tenant-модель (§3): аналитика только разрешённых объектов.
+const scope = useTenantScope()
+const scopedIncidents = scope.incidents(incidents.value)
+const scopedSites = scope.sites(sites.value)
+const scopedRobots = scope.robots(robots.value)
+const scopedMaintenance = scope.maintenance(maintenance.value)
+
 const robotOptions = computed(() =>
-  robots.value.filter((r) => filterSite.value === 'all' || r.siteId === filterSite.value),
+  scopedRobots.value.filter((r) => filterSite.value === 'all' || r.siteId === filterSite.value),
 )
 
 /** Выборка инцидентов по общим фильтрам. */
 const selection = computed<Incident[]>(() =>
-  incidents.value.filter((i) => {
+  scopedIncidents.value.filter((i) => {
     if (filterSite.value !== 'all' && i.siteId !== filterSite.value) return false
     if (filterCause.value !== 'all' && i.causeCode !== filterCause.value) return false
     if (filterZone.value !== 'all' && i.zoneName !== filterZone.value) return false
@@ -129,8 +137,8 @@ const kpis = computed(() => {
   // Плановый фонд робот-часов: смена 8 ч × 30 дней × парк (ТЗ §10.3: 6 240 при 26 роботах).
   const fleet =
     filterSite.value !== 'all'
-      ? robots.value.filter((r) => r.siteId === filterSite.value).length
-      : robots.value.length
+      ? scopedRobots.value.filter((r) => r.siteId === filterSite.value).length
+      : scopedRobots.value.length
   const plannedRobotHours = fleet * 8 * 30
   // Техническая доступность = 1 − технедоступность / плановые часы.
   const techAvailability =
@@ -139,20 +147,20 @@ const kpis = computed(() => {
   const powerAvailability =
     plannedRobotHours > 0 ? 100 - (impactSec / 3600 / plannedRobotHours) * 100 : 100
   // Стоимость ремонта: труд + запчасти + услуги по завершённым работам (§9.2).
-  const doneWorks = maintenance.value.filter(
+  const doneWorks = scopedMaintenance.value.filter(
     (m) =>
       (m.status === 'DONE' || m.status === 'RESULT_CONFIRMED') &&
       (filterSite.value === 'all' || m.siteId === filterSite.value),
   )
   const repairCost = doneWorks.reduce((s, m) => s + m.laborCost + m.partsCost + m.externalCost, 0)
-  const backlogWorks = maintenance.value.filter(
+  const backlogWorks = scopedMaintenance.value.filter(
     (m) =>
       !['DONE', 'RESULT_CONFIRMED', 'CANCELLED'].includes(m.status) &&
       (filterSite.value === 'all' || m.siteId === filterSite.value),
   )
   const backlogRobots = new Set(backlogWorks.map((m) => m.robotId)).size
   // Резерв ниже норматива (риск устойчивости, не потеря — §9.2).
-  const reserveBelow = sites.value
+  const reserveBelow = scopedSites.value
     .filter((s) => filterSite.value === 'all' || s.id === filterSite.value)
     .filter(
       (s) =>
@@ -232,7 +240,7 @@ const causeChartData = computed(() => causeRows.value.map((r) => r.loss))
 // ─── 32.4 Разделение: потери по объектам / по зонам ответственности ──────────
 
 const siteLossRows = computed(() =>
-  sites.value
+  scopedSites.value
     .map((s) => {
       const dts = selectionImpact.value.filter((d) => d.siteId === s.id)
       const loss = dts.reduce((s2, d) => s2 + d.lossRubles, 0)
@@ -479,7 +487,7 @@ function exportBreakdownCsv(): void {
           <SelectTrigger class="w-[180px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Все объекты</SelectItem>
-            <SelectItem v-for="s in sites" :key="s.id" :value="s.id">{{ s.name }}</SelectItem>
+            <SelectItem v-for="s in scopedSites" :key="s.id" :value="s.id">{{ s.name }}</SelectItem>
           </SelectContent>
         </Select>
       </div>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useDemoData } from '@/composables/useDemoData'
+import { useTenantScope } from '@/composables/useTenantScope'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { AlertTriangle, Clock, TrendingDown, Activity, ArrowRight, MapPin } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
@@ -9,9 +10,13 @@ import { incidentTypeLabel, causeLabel, CAUSE_CATALOG } from '@/data/generator'
 const { incidents, downtimes, stats, sites, robots, maintenance } = useDemoData()
 const router = useRouter()
 
-// ─── Срез по объектам (зона ответственности руководящих ролей, ТЗ v2.0 §3) ──
+// ─── Срез по объектам (зона ответственности роли, ТЗ v2.0 §3) ──────────────
+// Tenant-модель: только разрешённые объекты (начальник склада видит свой
+// объект на «Моем объекте», руководящие роли — все).
+const scope = useTenantScope()
+const scopedSites = scope.sites(sites.value)
 const siteRows = computed(() =>
-  sites.value
+  scopedSites.value
     .map((s) => {
       const siteRobots = robots.value.filter((r) => r.siteId === s.id)
       const working = siteRobots.filter((r) => r.fleetState === 'WORKING').length

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useDemoData } from '@/composables/useDemoData'
+import { useTenantScope } from '@/composables/useTenantScope'
 import { MAINTENANCE_STATUS_RU, MAINTENANCE_TYPE_RU } from '@/data/labels'
 import type { MaintenanceWork } from '@/types/domain'
 import { Card, CardContent } from '@/components/ui/card'
@@ -36,6 +37,11 @@ const { maintenance, sites, robots, incidents, completeMaintenance, returnRobotF
   useDemoData()
 const router = useRouter()
 
+// Tenant-модель (§3): работы только разрешённых объектов.
+const scope = useTenantScope()
+const scopedMaintenance = scope.maintenance(maintenance.value)
+const scopedSites = scope.sites(sites.value)
+
 const filterType = ref('all')
 const filterStatus = ref('all')
 const filterSite = ref('all')
@@ -65,7 +71,7 @@ const STATUS_CLASS: Record<string, string> = {
 }
 
 const filtered = computed(() => {
-  let result = maintenance.value
+  let result = scopedMaintenance.value
   if (filterType.value !== 'all') result = result.filter((m) => m.type === filterType.value)
   if (filterStatus.value !== 'all') result = result.filter((m) => m.status === filterStatus.value)
   if (filterSite.value !== 'all') result = result.filter((m) => m.siteId === filterSite.value)
@@ -273,7 +279,7 @@ function totalCost(m: MaintenanceWork): number {
           <SelectTrigger class="w-[170px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Все</SelectItem>
-            <SelectItem v-for="s in sites" :key="s.id" :value="s.id">{{ s.name }}</SelectItem>
+            <SelectItem v-for="s in scopedSites" :key="s.id" :value="s.id">{{ s.name }}</SelectItem>
           </SelectContent>
         </Select>
       </div>

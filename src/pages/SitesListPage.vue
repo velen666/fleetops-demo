@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useDemoData } from '@/composables/useDemoData'
+import { useTenantScope } from '@/composables/useTenantScope'
 import { useRouter } from 'vue-router'
 const router = useRouter()
 import { Card, CardContent } from '@/components/ui/card'
@@ -45,7 +46,7 @@ const siteMetrics = computed(() => {
       rate: number
     }
   >()
-  for (const s of sites.value) {
+  for (const s of scopedSitesList.value) {
     const siteRobots = robots.value.filter((r) => r.siteId === s.id)
     map.set(s.id, {
       robotCount: siteRobots.length,
@@ -75,10 +76,14 @@ function availability(siteId: string): number {
   return Math.max(0, 100 - (m.dtSeconds / 3600 / fundH) * 100)
 }
 
+// Tenant-модель (§3): реестр объектов — только разрешённые.
+const scope = useTenantScope()
+const scopedSitesList = scope.sites(sites.value)
+
 const filteredSites = computed(() => {
-  if (!searchText.value.trim()) return sites.value
+  if (!searchText.value.trim()) return scopedSitesList.value
   const s = searchText.value.trim().toLowerCase()
-  return sites.value.filter(
+  return scopedSitesList.value.filter(
     (site) => site.name.toLowerCase().includes(s) || site.address.toLowerCase().includes(s),
   )
 })

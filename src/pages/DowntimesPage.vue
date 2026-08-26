@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDemoData } from '@/composables/useDemoData'
+import { useTenantScope } from '@/composables/useTenantScope'
 import type { Downtime } from '@/types/domain'
 import {
   DOWNTIME_STATUS_RU,
@@ -104,8 +105,13 @@ function causeOf(dt: Downtime): string | null {
   return incidentOf(dt)?.causeCode ?? null
 }
 
+// Tenant-модель (§3): интервалы только разрешённых объектов.
+const scope = useTenantScope()
+const scopedDowntimes = scope.downtimes(downtimes.value)
+const scopedSites = scope.sites(sites.value)
+
 const filtered = computed(() => {
-  let list = downtimes.value
+  let list = scopedDowntimes.value
   if (filterSite.value !== 'all') list = list.filter((d) => d.siteId === filterSite.value)
   if (filterRobot.value !== 'all') list = list.filter((d) => d.robotId === filterRobot.value)
   // Резервный робот (ТЗ §9.1): интервалы инцидентов, где он был резервом.
@@ -307,7 +313,7 @@ function exportCsv(): void {
           <SelectTrigger class="w-[170px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Все</SelectItem>
-            <SelectItem v-for="s in sites" :key="s.id" :value="s.id">{{ s.name }}</SelectItem>
+            <SelectItem v-for="s in scopedSites" :key="s.id" :value="s.id">{{ s.name }}</SelectItem>
           </SelectContent>
         </Select>
       </div>
