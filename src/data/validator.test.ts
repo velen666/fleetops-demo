@@ -25,11 +25,14 @@ function confirmedImpact(): Downtime[] {
 }
 
 describe('DMO-01 · Парк, объекты, зоны (§10.1/§10.2)', () => {
-  it('ровно 26 уникальных роботов, 3 объекта, 9 зон', () => {
+  it('ровно 72 уникальных робота, 3 объекта, 9 зон (ACC-024: флагман 30)', () => {
     expect(data.robots.length).toBe(CONTROL_TOTALS.robots)
     expect(new Set(data.robots.map((r) => r.id)).size).toBe(CONTROL_TOTALS.robots)
     expect(data.sites.length).toBe(CONTROL_TOTALS.sites)
     expect(data.zones.length).toBe(CONTROL_TOTALS.zones)
+    expect(data.robots.filter((r) => r.siteId === 'site-pod').length).toBe(30)
+    expect(data.robots.filter((r) => r.siteId === 'site-obh').length).toBe(24)
+    expect(data.robots.filter((r) => r.siteId === 'site-dom').length).toBe(18)
   })
 
   it('робот принадлежит одному объекту и не более чем одной текущей зоне', () => {
@@ -43,19 +46,19 @@ describe('DMO-01 · Парк, объекты, зоны (§10.1/§10.2)', () => {
     }
   })
 
-  it('стартовые состояния парка: 17 работают / 3 резерв / 3 зарядка / 2 сервис / 1 авария', () => {
+  it('стартовые состояния парка: 49 работают / 7 резерв / 8 зарядка / 7 сервис / 1 авария', () => {
     const by = (s: string) => data.robots.filter((r) => r.fleetState === s).length
-    expect(by('WORKING')).toBe(17)
-    expect(by('RESERVE')).toBe(3)
-    expect(by('CHARGING')).toBe(3)
-    expect(by('IN_REPAIR') + by('AWAITING_REPAIR')).toBe(2)
+    expect(by('WORKING')).toBe(49)
+    expect(by('RESERVE')).toBe(7)
+    expect(by('CHARGING')).toBe(8)
+    expect(by('IN_REPAIR') + by('AWAITING_REPAIR') + by('DIAGNOSTICS') + by('TEST_RUN')).toBe(7)
     expect(by('EMERGENCY_STOP')).toBe(1)
-    // Одна единица — одно состояние: сумма всех состояний = 26.
+    // Одна единица — одно состояние: сумма всех состояний = 72 (ACC-024).
     const total = data.robots.length
-    expect(total).toBe(26)
+    expect(total).toBe(72)
   })
 
-  it('мощность зон по §10.2: C-12 3/2 (дефицит из-за аварии), остальные по нормативу', () => {
+  it('мощность зон: C-12 6/5 (дефицит из-за аварии), остальные по нормативу', () => {
     const actual = (zid: string) =>
       data.robots.filter((r) => r.fleetState === 'WORKING' && r.zoneId === zid).length
     const expectZone = (code: string, site: string, req: number, act: number) => {
@@ -63,18 +66,18 @@ describe('DMO-01 · Парк, объекты, зоны (§10.1/§10.2)', () => {
       expect(z.requiredCapacity).toBe(req)
       expect(actual(z.id)).toBe(act)
     }
-    expectZone('A-3', 'site-pod', 2, 2)
-    expectZone('B-2', 'site-pod', 2, 2)
-    expectZone('C-12', 'site-pod', 3, 2)
-    expectZone('A-1', 'site-obh', 2, 2)
-    expectZone('B-4', 'site-obh', 2, 2)
-    expectZone('C-7', 'site-obh', 2, 2)
-    expectZone('A-2', 'site-dom', 2, 2)
-    expectZone('B-6', 'site-dom', 2, 2)
-    expectZone('C-3', 'site-dom', 1, 1)
+    expectZone('A-3', 'site-pod', 7, 7)
+    expectZone('B-2', 'site-pod', 7, 7)
+    expectZone('C-12', 'site-pod', 6, 5)
+    expectZone('A-1', 'site-obh', 6, 6)
+    expectZone('B-4', 'site-obh', 6, 6)
+    expectZone('C-7', 'site-obh', 6, 6)
+    expectZone('A-2', 'site-dom', 4, 4)
+    expectZone('B-6', 'site-dom', 4, 4)
+    expectZone('C-3', 'site-dom', 4, 4)
   })
 
-  it('резерв не назначен в две зоны; свободный резерв Подольска = 1 на старте', () => {
+  it('резерв не назначен в две зоны; свободный резерв Подольска = 3 на старте (ACC-024)', () => {
     const subsByBackup = new Map<string, number>()
     for (const s of data.substitutions) {
       subsByBackup.set(s.backupRobotId, (subsByBackup.get(s.backupRobotId) ?? 0) + 1)
@@ -87,7 +90,7 @@ describe('DMO-01 · Парк, объекты, зоны (§10.1/§10.2)', () => {
     const podReserve = data.robots.filter(
       (r) => r.siteId === 'site-pod' && r.fleetState === 'RESERVE',
     )
-    expect(podReserve.map((r) => r.name)).toEqual(['FMR-012'])
+    expect(podReserve.map((r) => r.name).sort()).toEqual(['FMR-012', 'FMR-031', 'FMR-032'])
   })
 })
 
@@ -151,7 +154,7 @@ describe('DMO-01 · Инциденты: идентификаторы и сост
     }
   })
 
-  it('стартовый срез: 5 активных, 6 требуют разбора, 4 робота в бэклоге', () => {
+  it('стартовый срез: 5 активных, 6 требуют разбора, 9 роботов в бэклоге', () => {
     const active = data.incidents.filter(
       (i) => i.status !== 'CLOSED' && i.status !== 'READY_TO_CLOSE',
     )
@@ -293,7 +296,7 @@ describe('DMO-01 · Экономика: два интервала и контр�
     expect(mins('site-pod') + mins('site-obh') + mins('site-dom')).toBe(2970)
   })
 
-  it('показатели: техдоступность 99,21 %, операционная доступность мощности 99,71 %', () => {
+  it('показатели: техдоступность 99,71 %, операционная доступность мощности 99,90 % (к 17 280 робот-ч)', () => {
     const planned = CONTROL_TOTALS.plannedRobotHours
     const techDownH = 2970 / 60
     const impactH = 1075 / 60

@@ -179,8 +179,9 @@ test('ACC-023: контрольные метрики и консистентно
   await page.waitForTimeout(500)
 
   const body = (await page.locator('body').textContent())?.replace(/\u00A0/g, ' ') ?? ''
-  expect(body).toContain('99,21')
+  // ACC-024: плановый фонд 17 280 робот-ч → техдоступность 99,71 / мощность 99,90.
   expect(body).toContain('99,71')
+  expect(body).toContain('99,90')
 
   // Один и тот же робот: список и карточка показывают одинаковую доступность.
   await page.goto(`${BASE}/robots`)

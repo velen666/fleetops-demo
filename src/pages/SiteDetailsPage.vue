@@ -152,6 +152,71 @@ const metrics = computed(() => {
   }
 })
 
+// ─── Объектовая аналитика (ACC-018, ТЗ §8.2): причины / роботы / повторяемость
+// из того же набора интервалов, что и сводка (единые селекторы metrics.ts).
+
+const causeAnalytics = computed(() => {
+  const rows = new Map<
+    string,
+    { code: string; count: number; impactHours: number; techHours: number; loss: number }
+  >()
+  for (const d of siteDowntimes.value) {
+    const inc = siteIncidents.value.find((i) => i.id === d.incidentId)
+    const code = inc?.causeCode ?? 'CA-060'
+    const row = rows.get(code) ?? { code, count: 0, impactHours: 0, techHours: 0, loss: 0 }
+    const confirmed = d.confirmationStatus === 'CONFIRMED' || d.confirmationStatus === 'ADJUSTED'
+    if (confirmed && d.intervalType === 'OPERATIONAL_IMPACT') {
+      row.impactHours += d.accountableDurationSeconds / 3600
+      row.loss += d.lossRubles
+    }
+    if (d.intervalType === 'TECHNICAL_UNAVAILABLE' && d.intervalState === 'CLOSED')
+      row.techHours += d.accountableDurationSeconds / 3600
+    rows.set(code, row)
+  }
+  for (const [code, row] of rows) {
+    row.count = siteIncidents.value.filter((i) => (i.causeCode ?? 'CA-060') === code).length
+    rows.set(code, row)
+  }
+  return [...rows.values()].sort((a, b) => b.loss - a.loss || b.count - a.count)
+})
+
+const robotAnalytics = computed(() => {
+  const rows = new Map<
+    string,
+    { robotId: string; incidents: number; impactHours: number; techHours: number; loss: number }
+  >()
+  for (const r of siteRobots.value) {
+    rows.set(r.id, { robotId: r.id, incidents: 0, impactHours: 0, techHours: 0, loss: 0 })
+  }
+  for (const i of siteIncidents.value) {
+    if (!i.robotId) continue
+    const row = rows.get(i.robotId)
+    if (row) row.incidents++
+  }
+  for (const d of siteDowntimes.value) {
+    if (!d.robotId) continue
+    const row = rows.get(d.robotId)
+    if (!row) continue
+    const confirmed = d.confirmationStatus === 'CONFIRMED' || d.confirmationStatus === 'ADJUSTED'
+    if (confirmed && d.intervalType === 'OPERATIONAL_IMPACT') {
+      row.impactHours += d.accountableDurationSeconds / 3600
+      row.loss += d.lossRubles
+    }
+    if (d.intervalType === 'TECHNICAL_UNAVAILABLE' && d.intervalState === 'CLOSED')
+      row.techHours += d.accountableDurationSeconds / 3600
+  }
+  return [...rows.values()]
+    .filter((r) => r.incidents > 0 || r.loss > 0 || r.techHours > 0)
+    .sort((a, b) => b.loss - a.loss || b.techHours - a.techHours)
+    .slice(0, 10)
+})
+
+const repeatCauses = computed(() => causeAnalytics.value.filter((c) => c.count >= 2))
+
+function goAnalyticsCause(code: string): void {
+  router.push({ name: 'analytics', query: { site: siteId.value, cause: code, view: 'site' } })
+}
+
 function goBack(): void {
   router.push({ name: 'sites' })
 }
@@ -243,6 +308,7 @@ function goRobotsFiltered(): void {
         <TabsTrigger value="zones">Зоны</TabsTrigger>
         <TabsTrigger value="robots">Роботы ({{ siteRobots.length }})</TabsTrigger>
         <TabsTrigger value="incidents">Инциденты и простои</TabsTrigger>
+        <TabsTrigger value="analytics">Аналитика</TabsTrigger>
         <TabsTrigger value="maintenance">Сервисные работы</TabsTrigger>
         <TabsTrigger value="settings">Настройки</TabsTrigger>
       </TabsList>
@@ -364,6 +430,124 @@ function goRobotsFiltered(): void {
             </Table>
           </CardContent></Card
         >
+      </TabsContent>
+
+      <TabsContent value="analytics" class="tabs-content-spacing">
+        <!-- Объектовая аналитика (ACC-018, ТЗ §8.2): причины, роботы,
+             повторяемость — из того же набора интервалов, что и сводка. -->
+        <div class="space-y-4">
+          <Card>
+            <CardHeader
+              ><CardTitle>Потери по причинам</CardTitle>
+              <p class="text-xs text-muted-foreground">
+                Подтверждённое операционное влияние × ставка; клик — детализация в аналитике.
+              </p></CardHeader
+            >
+            <CardContent class="p-0">
+              <Table>
+                <TableHeader
+                  ><TableRow>
+                    <TableHead class="py-2 px-3">Причина</TableHead>
+                    <TableHead class="py-2 px-3">Случаев</TableHead>
+                    <TableHead class="py-2 px-3">Влияние, ч</TableHead>
+                    <TableHead class="py-2 px-3">Недоступность, ч</TableHead>
+                    <TableHead class="py-2 px-3">Потери</TableHead>
+                  </TableRow></TableHeader
+                >
+                <TableBody>
+                  <TableRow
+                    v-for="c in causeAnalytics"
+                    :key="c.code"
+                    class="row-interactive cursor-pointer"
+                    @click="goAnalyticsCause(c.code)"
+                  >
+                    <TableCell class="text-xs py-2 px-3">{{ causeLabel(c.code) }}</TableCell>
+                    <TableCell class="text-xs tabular-nums py-2 px-3">{{ c.count }}</TableCell>
+                    <TableCell class="text-xs tabular-nums py-2 px-3">{{
+                      c.impactHours.toFixed(1)
+                    }}</TableCell>
+                    <TableCell class="text-xs tabular-nums py-2 px-3">{{
+                      c.techHours.toFixed(1)
+                    }}</TableCell>
+                    <TableCell class="text-xs tabular-nums py-2 px-3"
+                      >{{ c.loss.toLocaleString('ru-RU') }} ₽</TableCell
+                    >
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader
+              ><CardTitle>Роботы с наибольшим влиянием</CardTitle>
+              <p class="text-xs text-muted-foreground">
+                Топ-10 по потерям и технической недоступности за 30 дней.
+              </p></CardHeader
+            >
+            <CardContent class="p-0">
+              <Table>
+                <TableHeader
+                  ><TableRow>
+                    <TableHead class="py-2 px-3">Робот</TableHead>
+                    <TableHead class="py-2 px-3">Инцидентов</TableHead>
+                    <TableHead class="py-2 px-3">Влияние, ч</TableHead>
+                    <TableHead class="py-2 px-3">Недоступность, ч</TableHead>
+                    <TableHead class="py-2 px-3">Потери</TableHead>
+                  </TableRow></TableHeader
+                >
+                <TableBody>
+                  <TableRow
+                    v-for="r in robotAnalytics"
+                    :key="r.robotId"
+                    class="row-interactive cursor-pointer"
+                    @click="goRobot(r.robotId)"
+                  >
+                    <TableCell class="text-xs py-2 px-3">{{
+                      siteRobots.find((x) => x.id === r.robotId)?.name ?? r.robotId
+                    }}</TableCell>
+                    <TableCell class="text-xs tabular-nums py-2 px-3">{{ r.incidents }}</TableCell>
+                    <TableCell class="text-xs tabular-nums py-2 px-3">{{
+                      r.impactHours.toFixed(1)
+                    }}</TableCell>
+                    <TableCell class="text-xs tabular-nums py-2 px-3">{{
+                      r.techHours.toFixed(1)
+                    }}</TableCell>
+                    <TableCell class="text-xs tabular-nums py-2 px-3"
+                      >{{ r.loss.toLocaleString('ru-RU') }} ₽</TableCell
+                    >
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader
+              ><CardTitle>Повторяемые причины (≥2 случаев)</CardTitle>
+              <p class="text-xs text-muted-foreground">
+                Кандидаты в регламентные меры: плановое ТО или изменение процесса.
+              </p></CardHeader
+            >
+            <CardContent class="space-y-2">
+              <p v-if="repeatCauses.length === 0" class="text-sm text-muted-foreground">
+                Повторяемых причин за период нет.
+              </p>
+              <div
+                v-for="c in repeatCauses"
+                :key="c.code"
+                class="card-interactive flex items-center justify-between rounded-lg border border-border p-3 cursor-pointer"
+                @click="goAnalyticsCause(c.code)"
+              >
+                <span class="text-sm">{{ causeLabel(c.code) }}</span>
+                <span class="text-xs tabular-nums text-muted-foreground"
+                  >{{ c.count }} сл. · {{ c.impactHours.toFixed(1) }} ч ·
+                  {{ c.loss.toLocaleString('ru-RU') }} ₽</span
+                >
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </TabsContent>
 
       <TabsContent value="incidents" class="tabs-content-spacing">

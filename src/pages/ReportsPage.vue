@@ -30,8 +30,13 @@ import { Download } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useRouter } from 'vue-router'
 import { incidentTypeLabel, causeLabel, CAUSE_CATALOG } from '@/data/generator'
+import { METRIC_PASSPORTS } from '@/data/metric-passports'
 import { useTenantScope } from '@/composables/useTenantScope'
 import { impactSeconds, techAvailabilityPct, techUnavailableSeconds } from '@/data/metrics'
+import { BookOpen } from 'lucide-vue-next'
+
+// ACC-033/034: каталог паспортов метрик (Отчёт §10.9) — раскрытый на Отчётах.
+const showPassports = ref(false)
 
 const { incidents, downtimes, analytics, robots, sites, costRates } = useDemoData()
 const auth = useAuthStore()
@@ -169,9 +174,9 @@ function exportReport(): void {
         `  ${i + 1}. ${causeLabel(c.code)}: ${c.count} случаев, ${c.hours.toFixed(1)} ч, ${c.loss.toLocaleString('ru-RU')} ₽`,
     ),
     '',
-    '=== SLA ===',
-    `Реакция: ${analytics.value.sla.reactionMet} в норме, ${analytics.value.sla.reactionViolated} нарушено`,
-    `Восстановление: ${analytics.value.sla.recoveryMet} в норме, ${analytics.value.sla.recoveryViolated} нарушено`,
+    '=== Реакция и восстановление (нормативы: реакция 10 мин, возврат 120 мин) ===',
+    `Реакция (обнаружение → принятие в работу): ${analytics.value.sla.reactionMet} в норме, ${analytics.value.sla.reactionViolated} нарушено`,
+    `Восстановление (обнаружение → возврат в парк): ${analytics.value.sla.recoveryMet} в норме, ${analytics.value.sla.recoveryViolated} нарушено`,
     '',
     '=== ПО РОБОТАМ ===',
     ...robotStats.value.map(
@@ -200,6 +205,45 @@ function openBreakdown(title: string): void {
 
 <template>
   <div class="space-y-4">
+    <!-- Паспорта метрик (ACC-033/034, Отчёт §10.9) -->
+    <Card>
+      <CardHeader class="cursor-pointer select-none" @click="showPassports = !showPassports">
+        <CardTitle class="flex items-center gap-2 text-base">
+          <BookOpen class="size-4" /> Паспорта метрик ({{ METRIC_PASSPORTS.length }})
+          <span class="text-xs font-normal text-muted-foreground">
+            {{ showPassports ? 'свернуть' : 'формула, источник, период, детализация' }}
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent v-if="showPassports" class="space-y-3">
+        <div
+          v-for="p in METRIC_PASSPORTS"
+          :key="p.code"
+          class="rounded-lg border border-border p-3 space-y-1"
+        >
+          <div class="flex flex-wrap items-baseline justify-between gap-2">
+            <p class="text-sm font-medium">{{ p.name }}</p>
+            <span class="text-xs rounded px-1.5 py-0.5 bg-muted">{{ p.status }}</span>
+          </div>
+          <p class="text-xs text-muted-foreground">{{ p.question }}</p>
+          <div class="grid gap-x-6 gap-y-1 text-xs md:grid-cols-2 mt-1">
+            <p><span class="text-muted-foreground">Формула:</span> {{ p.formula }}</p>
+            <p><span class="text-muted-foreground">Числитель:</span> {{ p.numerator }}</p>
+            <p><span class="text-muted-foreground">Знаменатель:</span> {{ p.denominator }}</p>
+            <p><span class="text-muted-foreground">Единица:</span> {{ p.unit }}</p>
+            <p><span class="text-muted-foreground">Источник:</span> {{ p.source }}</p>
+            <p><span class="text-muted-foreground">Период:</span> {{ p.period }}</p>
+            <p><span class="text-muted-foreground">Агрегация:</span> {{ p.aggregation }}</p>
+            <p><span class="text-muted-foreground">Исключения:</span> {{ p.exclusions }}</p>
+            <p>
+              <span class="text-muted-foreground">При неполных данных:</span> {{ p.incomplete }}
+            </p>
+            <p><span class="text-muted-foreground">Детализация:</span> {{ p.drilldown }}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+
     <!-- Toolbar -->
     <div class="flex items-center gap-3">
       <div class="space-y-1">
@@ -342,44 +386,82 @@ function openBreakdown(title: string): void {
       </CardContent>
     </Card>
 
-    <!-- SLA summary -->
+    <!-- Реакция и восстановление (ACC-021): объяснимые метрики вместо SLA-цифр
+         без контекста — определение, норматив, числитель/знаменатель, формула. -->
     <div class="grid gap-4 lg:grid-cols-2">
       <Card>
-        <CardHeader><CardTitle>SLA реакции</CardTitle></CardHeader>
-        <CardContent>
+        <CardHeader>
+          <CardTitle>Реакция на инцидент</CardTitle>
+          <p class="text-xs text-muted-foreground">
+            Определение: время от обнаружения инцидента до принятия его в работу координатором.
+            Норматив: 10 минут. Источник: FleetOps (история инцидента), 30 дней.
+          </p>
+        </CardHeader>
+        <CardContent class="space-y-2">
           <div class="flex gap-6">
             <div class="text-center">
               <p class="text-3xl font-bold text-success tabular-nums">
                 {{ analytics.sla.reactionMet }}
               </p>
-              <p class="text-xs text-muted-foreground">в норме</p>
+              <p class="text-xs text-muted-foreground">уложились в норматив</p>
             </div>
             <div class="text-center">
               <p class="text-3xl font-bold text-destructive tabular-nums">
                 {{ analytics.sla.reactionViolated }}
               </p>
-              <p class="text-xs text-muted-foreground">нарушено</p>
+              <p class="text-xs text-muted-foreground">превышен норматив</p>
             </div>
           </div>
+          <p class="text-xs text-muted-foreground">
+            Числитель: инциденты, принятые в работу ≤ 10 мин. Знаменатель: инциденты с
+            зафиксированным временем реакции —
+            {{ analytics.sla.reactionMet + analytics.sla.reactionViolated }}. Доля в норме:
+            {{
+              (
+                (analytics.sla.reactionMet /
+                  Math.max(1, analytics.sla.reactionMet + analytics.sla.reactionViolated)) *
+                100
+              ).toFixed(0)
+            }}%. Детализация — реестр инцидентов.
+          </p>
         </CardContent>
       </Card>
       <Card>
-        <CardHeader><CardTitle>SLA восстановления</CardTitle></CardHeader>
-        <CardContent>
+        <CardHeader>
+          <CardTitle>Восстановление робота</CardTitle>
+          <p class="text-xs text-muted-foreground">
+            Определение: время от обнаружения инцидента до возврата робота в парк (окончание
+            технической недоступности). Норматив: 120 минут. Источник: FleetOps (контрольные точки),
+            30 дней.
+          </p>
+        </CardHeader>
+        <CardContent class="space-y-2">
           <div class="flex gap-6">
             <div class="text-center">
               <p class="text-3xl font-bold text-success tabular-nums">
                 {{ analytics.sla.recoveryMet }}
               </p>
-              <p class="text-xs text-muted-foreground">в норме</p>
+              <p class="text-xs text-muted-foreground">уложились в норматив</p>
             </div>
             <div class="text-center">
               <p class="text-3xl font-bold text-destructive tabular-nums">
                 {{ analytics.sla.recoveryViolated }}
               </p>
-              <p class="text-xs text-muted-foreground">нарушено</p>
+              <p class="text-xs text-muted-foreground">превышен норматив</p>
             </div>
           </div>
+          <p class="text-xs text-muted-foreground">
+            Числитель: возвраты в парк ≤ 120 мин. Знаменатель: закрытые инциденты с технической
+            недоступностью —
+            {{ analytics.sla.recoveryMet + analytics.sla.recoveryViolated }}. Доля в норме:
+            {{
+              (
+                (analytics.sla.recoveryMet /
+                  Math.max(1, analytics.sla.recoveryMet + analytics.sla.recoveryViolated)) *
+                100
+              ).toFixed(0)
+            }}%. Распределение (медиана / среднее / 90-й перцентиль) — «Аналитика и экономика».
+          </p>
         </CardContent>
       </Card>
     </div>

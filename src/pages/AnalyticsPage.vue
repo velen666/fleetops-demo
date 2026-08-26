@@ -140,7 +140,7 @@ const kpis = computed(() => {
   const active = sel.filter((i) => i.status !== 'CLOSED').length
   const withFinal = sel.filter((i) => i.causeMaturity === 'FINAL').length
   const unfinished = sel.filter((i) => i.status !== 'CLOSED' && i.causeMaturity !== 'FINAL').length
-  // Плановый фонд робот-часов: смена 8 ч × 30 дней × парк (ТЗ §10.3: 6 240 при 26 роботах).
+  // Плановый фонд робот-часов: смена 8 ч × 30 дней × парк (ACC-024: 17 280 при 72 роботах).
   const fleet =
     filterSite.value !== 'all'
       ? scopedRobots.value.filter((r) => r.siteId === filterSite.value).length

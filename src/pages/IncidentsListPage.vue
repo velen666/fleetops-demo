@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { useDemoData } from '@/composables/useDemoData'
 import { useTenantScope } from '@/composables/useTenantScope'
 import { incidentTypeLabel, causeLabel } from '@/data/generator'
+import type { Downtime } from '@/types/domain'
 import { INCIDENT_STATUS_RU, INCIDENT_STATUS_CLASS } from '@/data/labels'
 import { useAuthStore } from '@/stores/auth'
 import { useSavedViews } from '@/composables/useSavedViews'
@@ -64,16 +65,44 @@ const activeQueue = ref<string>(strParam(route.query.queue, 'all'))
 const filterSite = ref(strParam(route.query.site, 'all'))
 const filterStatus = ref(strParam(route.query.status, 'all'))
 const searchText = ref(strParam(route.query.q, ''))
+// ACC-009 (Отчёт §4.2): период, зона, робот, вендор, приоритет, координатор,
+// вид простоя — полный набор из ТЗ §8.3, сохраняются в URL.
+const filterPeriod = ref(strParam(route.query.period, '30'))
+const filterZone = ref(strParam(route.query.zone, 'all'))
+const filterRobot = ref(strParam(route.query.robot, 'all'))
+const filterVendor = ref(strParam(route.query.vendor, 'all'))
+const filterPriority = ref(strParam(route.query.priority, 'all'))
+const filterCoordinator = ref(strParam(route.query.coordinator, 'all'))
+const filterDowntimeKind = ref(strParam(route.query.dt, 'all'))
 
 watch(
-  [activeQueue, filterSite, filterStatus, searchText],
-  ([queue, site, status, q]) => {
+  [
+    activeQueue,
+    filterSite,
+    filterStatus,
+    searchText,
+    filterPeriod,
+    filterZone,
+    filterRobot,
+    filterVendor,
+    filterPriority,
+    filterCoordinator,
+    filterDowntimeKind,
+  ],
+  ([queue, site, status, q, period, zone, robot, vendor, priority, coordinator, dt]) => {
     void router.replace({
       query: {
         ...(queue !== 'all' ? { queue } : {}),
         ...(site !== 'all' ? { site } : {}),
         ...(status !== 'all' ? { status } : {}),
         ...(q ? { q } : {}),
+        ...(period !== '30' ? { period } : {}),
+        ...(zone !== 'all' ? { zone } : {}),
+        ...(robot !== 'all' ? { robot } : {}),
+        ...(vendor !== 'all' ? { vendor } : {}),
+        ...(priority !== 'all' ? { priority } : {}),
+        ...(coordinator !== 'all' ? { coordinator } : {}),
+        ...(dt !== 'all' ? { dt } : {}),
       },
     })
   },
@@ -181,6 +210,24 @@ const queues: Queue[] = [
 const scope = useTenantScope()
 const scopedIncidents = scope.incidents(incidents.value)
 const scopedSites = scope.sites(sites.value)
+const scopedRobots = scope.robots(robots.value)
+
+// Опции фильтров (ACC-009): зоны/роботы/вендоры текущей области роли.
+const zoneOptions = computed(() => {
+  const codes = new Set<string>()
+  for (const i of scopedIncidents.value) {
+    const code = i.zoneName?.split(' ')[0]
+    if (code) codes.add(code)
+  }
+  return [...codes].sort()
+})
+const robotOptions = computed(() => scopedRobots.value.map((r) => ({ id: r.id, name: r.name })))
+const vendorOptions = computed(() => [...new Set(scopedRobots.value.map((r) => r.vendor))].sort())
+const coordinatorOptions = computed(() => {
+  const names = new Set<string>()
+  for (const i of scopedIncidents.value) if (i.coordinatorName) names.add(i.coordinatorName)
+  return [...names].sort()
+})
 
 const queueCounts = computed(() => {
   const counts: Record<string, number> = {}
@@ -198,6 +245,46 @@ const filteredIncidents = computed(() => {
   }
   if (filterSite.value !== 'all') result = result.filter((i) => i.siteId === filterSite.value)
   if (filterStatus.value !== 'all') result = result.filter((i) => i.status === filterStatus.value)
+  // ACC-009: период от сегодня назад по detectedAt.
+  if (filterPeriod.value !== 'all') {
+    const days = Number(filterPeriod.value)
+    if (Number.isFinite(days) && days > 0) {
+      const from = Date.now() - days * 86_400_000
+      result = result.filter((i) => Date.parse(i.detectedAt) >= from)
+    }
+  }
+  if (filterZone.value !== 'all')
+    result = result.filter((i) => (i.zoneName ?? '').startsWith(filterZone.value))
+  if (filterRobot.value !== 'all') result = result.filter((i) => i.robotId === filterRobot.value)
+  if (filterVendor.value !== 'all') {
+    const robotIds = new Set(
+      scopedRobots.value.filter((r) => r.vendor === filterVendor.value).map((r) => r.id),
+    )
+    result = result.filter((i) => i.robotId != null && robotIds.has(i.robotId))
+  }
+  if (filterPriority.value !== 'all')
+    result = result.filter((i) => i.severity === filterPriority.value)
+  if (filterCoordinator.value !== 'all') {
+    result = result.filter((i) =>
+      filterCoordinator.value === '__none__'
+        ? !i.coordinatorName
+        : i.coordinatorName === filterCoordinator.value,
+    )
+  }
+  if (filterDowntimeKind.value !== 'all') {
+    // ACC-009: вид простоя — «с влиянием на процесс» / «технедоступность».
+    const byIncident = new Map<string, Downtime[]>()
+    for (const d of downtimes.value) {
+      if (!d.incidentId) continue
+      byIncident.set(d.incidentId, [...(byIncident.get(d.incidentId) ?? []), d])
+    }
+    result = result.filter((i) => {
+      const dts = byIncident.get(i.id) ?? []
+      return filterDowntimeKind.value === 'impact'
+        ? dts.some((d) => d.intervalType === 'OPERATIONAL_IMPACT')
+        : dts.some((d) => d.intervalType === 'TECHNICAL_UNAVAILABLE')
+    })
+  }
   if (searchText.value.trim()) {
     const s = searchText.value.trim().toLowerCase()
     result = result.filter(
@@ -439,6 +526,87 @@ function exportCsv(): void {
           aria-label="Поиск по инцидентам"
           placeholder="Номер, название, описание..."
         />
+      </div>
+      <!-- ACC-009: период, зона, робот, вендор, приоритет, координатор, вид простоя. -->
+      <div class="space-y-1">
+        <span class="text-xs text-muted-foreground block">Период</span>
+        <Select v-model="filterPeriod" aria-label="Фильтр по периоду">
+          <SelectTrigger class="w-[130px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="30">30 дней</SelectItem>
+            <SelectItem value="7">7 дней</SelectItem>
+            <SelectItem value="14">14 дней</SelectItem>
+            <SelectItem value="90">90 дней</SelectItem>
+            <SelectItem value="all">Весь период</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="space-y-1">
+        <span class="text-xs text-muted-foreground block">Зона</span>
+        <Select v-model="filterZone" aria-label="Фильтр по зоне">
+          <SelectTrigger class="w-[110px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все</SelectItem>
+            <SelectItem v-for="z in zoneOptions" :key="z" :value="z">{{ z }}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="space-y-1">
+        <span class="text-xs text-muted-foreground block">Робот</span>
+        <Select v-model="filterRobot" aria-label="Фильтр по роботу">
+          <SelectTrigger class="w-[150px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все</SelectItem>
+            <SelectItem v-for="r in robotOptions" :key="r.id" :value="r.id">{{
+              r.name
+            }}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="space-y-1">
+        <span class="text-xs text-muted-foreground block">Вендор</span>
+        <Select v-model="filterVendor" aria-label="Фильтр по вендору">
+          <SelectTrigger class="w-[140px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все</SelectItem>
+            <SelectItem v-for="v in vendorOptions" :key="v" :value="v">{{ v }}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="space-y-1">
+        <span class="text-xs text-muted-foreground block">Приоритет</span>
+        <Select v-model="filterPriority" aria-label="Фильтр по приоритету">
+          <SelectTrigger class="w-[140px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все</SelectItem>
+            <SelectItem value="CRITICAL">Критический</SelectItem>
+            <SelectItem value="HIGH">Высокий</SelectItem>
+            <SelectItem value="MEDIUM">Средний</SelectItem>
+            <SelectItem value="LOW">Низкий</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="space-y-1">
+        <span class="text-xs text-muted-foreground block">Координатор</span>
+        <Select v-model="filterCoordinator" aria-label="Фильтр по координатору">
+          <SelectTrigger class="w-[170px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все</SelectItem>
+            <SelectItem value="__none__">Не назначен</SelectItem>
+            <SelectItem v-for="c in coordinatorOptions" :key="c" :value="c">{{ c }}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="space-y-1">
+        <span class="text-xs text-muted-foreground block">Вид простоя</span>
+        <Select v-model="filterDowntimeKind" aria-label="Фильтр по виду простоя">
+          <SelectTrigger class="w-[210px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все</SelectItem>
+            <SelectItem value="impact">С влиянием на процесс</SelectItem>
+            <SelectItem value="tech">Техническая недоступность</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
     </div>
 

@@ -26,10 +26,11 @@ import type {
 } from '@/types/domain'
 
 // ─── Контрольные суммы итерации ТЗ v2.0 (§10) ──────────────────────────────
-// Парк: 26 роботов (17 работают / 3 резерв / 3 зарядка / 2 сервиса+авария на старте).
+// Парк: 72 робота (49 работают / 7 резерв / 8 зарядка / 7 сервис / 1 авария на старте; ACC-024).
 // Зоны: 9. Инциденты: 33, подтверждённое операционное влияние 17 ч 55 мин
-// (1075 мин), потери 986 669 ₽. Арифметика по интервалам, округление до рубля
-// на интервал:
+// (1075 мин), потери 986 669 ₽ (инцидентный контракт Отчёта §5 — без изменений
+// при масштабировании парка, ACC-024). Арифметика по интервалам, округление
+// до рубля на интервал:
 //   Подольск 295 мин / 344 169 ₽ · Обухово 450 мин / 450 000 ₽ ·
 //   Домодедово 330 мин / 192 500 ₽.
 // Группы причин: столкновение 310 мин / 265 417 ₽ (ТЗ: 265 419 — недостижимо
@@ -38,22 +39,24 @@ import type {
 // батарея 75 / 65 000, привод 90 / 82 500, прочие 30 / 32 500.
 // Техническая недоступность (закрытые интервалы): 49 ч 30 мин —
 // Подольск 24 ч, Обухово 18 ч 30 мин, Домодедово 7 ч.
-// Показатели: плановые часы 6 240 робот-ч; техническая доступность 99,21 %;
-// операционная доступность мощности 99,71 % (обе — к 6 240 робот-ч, как в ТЗ).
+// Парк (ACC-024, Отчёт §10.2/§12): 72 робота, флагман РЦ Подольск — 30;
+// Обухово — 24; Домодедово — 18. Плановый фонд 72 × 8 ч × 30 дней
+// = 17 280 робот-ч; техническая доступность 99,71 %;
+// операционная доступность мощности 99,90 % (к 17 280 робот-ч).
 
 export const CONTROL_TOTALS = {
-  robots: 26,
+  robots: 72,
   incidents: 33,
   zones: 9,
   sites: 3,
   confirmedImpactMinutes: 1075,
   confirmedLossRubles: 986669,
   technicalUnavailableMinutes: { 'site-pod': 1440, 'site-obh': 1110, 'site-dom': 420 },
-  plannedRobotHours: 6240,
-  technicalAvailabilityPct: 99.21,
-  operationalAvailabilityPct: 99.71,
+  plannedRobotHours: 17280,
+  technicalAvailabilityPct: 99.71,
+  operationalAvailabilityPct: 99.9,
   startActiveIncidents: 5,
-  startBacklogRobots: 4,
+  startBacklogRobots: 9,
   startRequireAnalysis: 6,
 } as const
 
@@ -174,7 +177,7 @@ const sites: Site[] = [
     address: 'МО, Подольск',
     timezone: 'Europe/Moscow',
     ratePerHour: 70000,
-    reserveNorm: 1,
+    reserveNorm: 3,
   },
   {
     id: 'site-obh',
@@ -182,7 +185,7 @@ const sites: Site[] = [
     address: 'СПб, Обухово',
     timezone: 'Europe/Moscow',
     ratePerHour: 60000,
-    reserveNorm: 1,
+    reserveNorm: 2,
   },
   {
     id: 'site-dom',
@@ -190,7 +193,7 @@ const sites: Site[] = [
     address: 'МО, Домодедово',
     timezone: 'Europe/Moscow',
     ratePerHour: 35000,
-    reserveNorm: 1,
+    reserveNorm: 2,
   },
 ]
 
@@ -208,7 +211,7 @@ export const ZONES: SiteZone[] = [
     code: 'A-3',
     name: 'A-3 «Приёмка»',
     process: 'Приёмка',
-    requiredCapacity: 2,
+    requiredCapacity: 7,
     responsibleName: 'Елена Смирнова',
   },
   {
@@ -217,7 +220,7 @@ export const ZONES: SiteZone[] = [
     code: 'B-2',
     name: 'B-2 «Хранение»',
     process: 'Перемещение',
-    requiredCapacity: 2,
+    requiredCapacity: 7,
     responsibleName: 'Елена Смирнова',
   },
   {
@@ -226,7 +229,7 @@ export const ZONES: SiteZone[] = [
     code: 'C-12',
     name: 'C-12 «Пересечение маршрутов»',
     process: 'Межзонное перемещение',
-    requiredCapacity: 3,
+    requiredCapacity: 6,
     responsibleName: 'Елена Смирнова',
   },
   {
@@ -235,7 +238,7 @@ export const ZONES: SiteZone[] = [
     code: 'A-1',
     name: 'A-1 «Приёмка»',
     process: 'Приёмка',
-    requiredCapacity: 2,
+    requiredCapacity: 6,
     responsibleName: 'Павел Кузнецов',
   },
   {
@@ -244,7 +247,7 @@ export const ZONES: SiteZone[] = [
     code: 'B-4',
     name: 'B-4 «Хранение»',
     process: 'Перемещение',
-    requiredCapacity: 2,
+    requiredCapacity: 6,
     responsibleName: 'Павел Кузнецов',
   },
   {
@@ -253,7 +256,7 @@ export const ZONES: SiteZone[] = [
     code: 'C-7',
     name: 'C-7 «Комплектация»',
     process: 'Комплектация',
-    requiredCapacity: 2,
+    requiredCapacity: 6,
     responsibleName: 'Павел Кузнецов',
   },
   {
@@ -262,7 +265,7 @@ export const ZONES: SiteZone[] = [
     code: 'A-2',
     name: 'A-2 «Приёмка»',
     process: 'Приёмка',
-    requiredCapacity: 2,
+    requiredCapacity: 4,
     responsibleName: 'Ольга Романова',
   },
   {
@@ -271,7 +274,7 @@ export const ZONES: SiteZone[] = [
     code: 'B-6',
     name: 'B-6 «Хранение»',
     process: 'Перемещение',
-    requiredCapacity: 2,
+    requiredCapacity: 4,
     responsibleName: 'Ольга Романова',
   },
   {
@@ -280,7 +283,7 @@ export const ZONES: SiteZone[] = [
     code: 'C-3',
     name: 'C-3 «Отгрузка»',
     process: 'Отгрузка',
-    requiredCapacity: 1,
+    requiredCapacity: 4,
     responsibleName: 'Ольга Романова',
   },
 ]
@@ -350,38 +353,91 @@ export function wmsSourceForSite(siteId: string): string {
   )
 }
 
-// ─── Парк: 26 роботов, стартовые состояния (ТЗ v2.0 §10.1) ────────────────
-// Подольск 10: FMR-001 (авария — живой INC-2026-0033), FMR-004/007 (A-3),
-// FMR-008/009 (B-2), FMR-005/006 (C-12), FMR-010 (зарядка), FMR-011 (ремонт),
-// FMR-012 (резерв). Нумерация с пропусками (FMR-002/003 списаны) —
-// правдоподобный парк, в котором существуют и FMR-001, и FMR-012.
+// ─── Парк: 72 робота (ACC-024, Отчёт §10.2/§12) ────────────────────────────
+// Подольск 30 (флагман): FMR-001 (авария — живой INC-2026-0033),
+// A-3: FMR-004/007/013..017 · B-2: FMR-008/009/018..022 ·
+// C-12: FMR-005/006/023..025 · зарядка FMR-010/026..028 ·
+// сервис FMR-011 (ремонт)/029 (диагностика)/030 (контрольный запуск) ·
+// резерв FMR-012/031/032. Нумерация с пропусками (FMR-002/003 списаны).
+// Обухово 24: HIK-001..024 (работа 18, зарядка 2, сервис 2, резерв 2).
+// Домодедово 18: QTR-001..018, Geek+ P-series (001..009) + M-series (010..018).
 
 const ROBOT_START_STATES: Record<string, FleetState> = {
+  // Подольск: работающие
   'fmr-4': 'WORKING',
   'fmr-5': 'WORKING',
   'fmr-6': 'WORKING',
   'fmr-7': 'WORKING',
   'fmr-8': 'WORKING',
   'fmr-9': 'WORKING',
+  'fmr-13': 'WORKING',
+  'fmr-14': 'WORKING',
+  'fmr-15': 'WORKING',
+  'fmr-16': 'WORKING',
+  'fmr-17': 'WORKING',
+  'fmr-18': 'WORKING',
+  'fmr-19': 'WORKING',
+  'fmr-20': 'WORKING',
+  'fmr-21': 'WORKING',
+  'fmr-22': 'WORKING',
+  'fmr-23': 'WORKING',
+  'fmr-24': 'WORKING',
+  'fmr-25': 'WORKING',
+  // Подольск: зарядка / сервис / резерв
   'fmr-10': 'CHARGING',
+  'fmr-26': 'CHARGING',
+  'fmr-27': 'CHARGING',
+  'fmr-28': 'CHARGING',
   'fmr-11': 'IN_REPAIR',
+  'fmr-29': 'DIAGNOSTICS',
+  'fmr-30': 'TEST_RUN',
   'fmr-12': 'RESERVE',
+  'fmr-31': 'RESERVE',
+  'fmr-32': 'RESERVE',
+  // Обухово
   'hik-1': 'WORKING',
   'hik-2': 'WORKING',
   'hik-3': 'WORKING',
   'hik-4': 'WORKING',
   'hik-5': 'WORKING',
   'hik-6': 'WORKING',
-  'hik-7': 'AWAITING_REPAIR',
+  'hik-10': 'WORKING',
+  'hik-11': 'WORKING',
+  'hik-12': 'WORKING',
+  'hik-13': 'WORKING',
+  'hik-14': 'WORKING',
+  'hik-15': 'WORKING',
+  'hik-16': 'WORKING',
+  'hik-17': 'WORKING',
+  'hik-18': 'WORKING',
+  'hik-19': 'WORKING',
+  'hik-20': 'WORKING',
+  'hik-21': 'WORKING',
   'hik-8': 'CHARGING',
+  'hik-22': 'CHARGING',
+  'hik-7': 'AWAITING_REPAIR',
+  'hik-23': 'DIAGNOSTICS',
   'hik-9': 'RESERVE',
+  'hik-24': 'RESERVE',
+  // Домодедово
   'qtr-1': 'WORKING',
   'qtr-2': 'WORKING',
   'qtr-3': 'WORKING',
   'qtr-4': 'WORKING',
   'qtr-5': 'WORKING',
+  'qtr-8': 'WORKING',
+  'qtr-9': 'WORKING',
+  'qtr-10': 'WORKING',
+  'qtr-11': 'WORKING',
+  'qtr-12': 'WORKING',
+  'qtr-13': 'WORKING',
+  'qtr-14': 'WORKING',
   'qtr-6': 'CHARGING',
+  'qtr-15': 'CHARGING',
+  'qtr-16': 'DIAGNOSTICS',
+  'qtr-17': 'AWAITING_REPAIR',
   'qtr-7': 'RESERVE',
+  'qtr-18': 'RESERVE',
 }
 
 const ROBOT_HOME_ZONES: Record<string, string> = {
@@ -395,6 +451,26 @@ const ROBOT_HOME_ZONES: Record<string, string> = {
   'fmr-10': 'z-pod-a3',
   'fmr-11': 'z-pod-c12',
   'fmr-12': 'z-pod-b2',
+  'fmr-13': 'z-pod-a3',
+  'fmr-14': 'z-pod-a3',
+  'fmr-15': 'z-pod-a3',
+  'fmr-16': 'z-pod-a3',
+  'fmr-17': 'z-pod-a3',
+  'fmr-18': 'z-pod-b2',
+  'fmr-19': 'z-pod-b2',
+  'fmr-20': 'z-pod-b2',
+  'fmr-21': 'z-pod-b2',
+  'fmr-22': 'z-pod-b2',
+  'fmr-23': 'z-pod-c12',
+  'fmr-24': 'z-pod-c12',
+  'fmr-25': 'z-pod-c12',
+  'fmr-26': 'z-pod-a3',
+  'fmr-27': 'z-pod-b2',
+  'fmr-28': 'z-pod-c12',
+  'fmr-29': 'z-pod-c12',
+  'fmr-30': 'z-pod-c12',
+  'fmr-31': 'z-pod-b2',
+  'fmr-32': 'z-pod-a3',
   'hik-1': 'z-obh-a1',
   'hik-2': 'z-obh-a1',
   'hik-3': 'z-obh-b4',
@@ -404,6 +480,21 @@ const ROBOT_HOME_ZONES: Record<string, string> = {
   'hik-7': 'z-obh-c7',
   'hik-8': 'z-obh-a1',
   'hik-9': 'z-obh-b4',
+  'hik-10': 'z-obh-a1',
+  'hik-11': 'z-obh-a1',
+  'hik-12': 'z-obh-a1',
+  'hik-13': 'z-obh-a1',
+  'hik-14': 'z-obh-b4',
+  'hik-15': 'z-obh-b4',
+  'hik-16': 'z-obh-b4',
+  'hik-17': 'z-obh-b4',
+  'hik-18': 'z-obh-c7',
+  'hik-19': 'z-obh-c7',
+  'hik-20': 'z-obh-c7',
+  'hik-21': 'z-obh-c7',
+  'hik-22': 'z-obh-a1',
+  'hik-23': 'z-obh-c7',
+  'hik-24': 'z-obh-b4',
   'qtr-1': 'z-dom-a2',
   'qtr-2': 'z-dom-a2',
   'qtr-3': 'z-dom-b6',
@@ -411,6 +502,17 @@ const ROBOT_HOME_ZONES: Record<string, string> = {
   'qtr-5': 'z-dom-c3',
   'qtr-6': 'z-dom-a2',
   'qtr-7': 'z-dom-b6',
+  'qtr-8': 'z-dom-a2',
+  'qtr-9': 'z-dom-a2',
+  'qtr-10': 'z-dom-b6',
+  'qtr-11': 'z-dom-b6',
+  'qtr-12': 'z-dom-c3',
+  'qtr-13': 'z-dom-c3',
+  'qtr-14': 'z-dom-c3',
+  'qtr-15': 'z-dom-a2',
+  'qtr-16': 'z-dom-b6',
+  'qtr-17': 'z-dom-c3',
+  'qtr-18': 'z-dom-b6',
 }
 
 function buildRobots(): Robot[] {
@@ -453,7 +555,7 @@ function buildRobots(): Robot[] {
     }
   }
   robots.push(mk('fmr-1', 'FMR-001', 'Ronavi H1500', 'Ronavi', 'site-pod', 'src-fm-pod', 'FMR'))
-  for (let i = 4; i <= 12; i++)
+  for (let i = 4; i <= 32; i++)
     robots.push(
       mk(
         `fmr-${i}`,
@@ -465,7 +567,7 @@ function buildRobots(): Robot[] {
         'FMR',
       ),
     )
-  for (let i = 1; i <= 9; i++)
+  for (let i = 1; i <= 24; i++)
     robots.push(
       mk(
         `hik-${i}`,
@@ -477,12 +579,12 @@ function buildRobots(): Robot[] {
         'HIK',
       ),
     )
-  for (let i = 1; i <= 7; i++)
+  for (let i = 1; i <= 18; i++)
     robots.push(
       mk(
         `qtr-${i}`,
         `QTR-AMR-${String(i).padStart(3, '0')}`,
-        'Geek+ P-series',
+        i <= 9 ? 'Geek+ P-series' : 'Geek+ M-series',
         'Geek+',
         'site-dom',
         'src-qrcs-dom',
@@ -527,11 +629,76 @@ function buildRobotStates(): RobotStateEntry[] {
   push('hik-7', 'WORKING', daysAgo(30, 8, 0), 'RMS', null)
   push('hik-7', 'DIAGNOSTICS', daysAgo(3, 10, 15), 'MANUAL', 'Диагностика АКБ; INC-2026-0026')
   push('hik-7', 'AWAITING_REPAIR', daysAgo(2, 14, 0), 'MANUAL', 'Ожидание АКБ от поставщика')
-  for (const id of ['fmr-10', 'hik-8', 'qtr-6'])
+  // Флагман и новые единицы (ACC-024): сервисный контур и резерв.
+  push('fmr-29', 'WORKING', daysAgo(30, 8, 0), 'RMS', null)
+  push('fmr-29', 'DIAGNOSTICS', daysAgo(1, 10, 0), 'MANUAL', 'Диагностика колёсного модуля')
+  push('fmr-30', 'WORKING', daysAgo(30, 8, 0), 'RMS', null)
+  push('fmr-30', 'IN_REPAIR', daysAgo(3, 13, 20), 'MANUAL', 'Замена ролика приводного')
+  push('fmr-30', 'TEST_RUN', daysAgo(0, 8, 40), 'MANUAL', 'Контрольный маршрут после ремонта')
+  push('hik-23', 'WORKING', daysAgo(30, 8, 0), 'RMS', null)
+  push('hik-23', 'DIAGNOSTICS', daysAgo(0, 10, 5), 'MANUAL', 'Ошибки локализации в B-4')
+  push('qtr-16', 'WORKING', daysAgo(30, 8, 0), 'RMS', null)
+  push('qtr-16', 'DIAGNOSTICS', daysAgo(1, 15, 45), 'MANUAL', 'Диагностика датчика препятствий')
+  push('qtr-17', 'WORKING', daysAgo(30, 8, 0), 'RMS', null)
+  push(
+    'qtr-17',
+    'AWAITING_REPAIR',
+    daysAgo(2, 9, 10),
+    'MANUAL',
+    'Ожидание приводного ремня M-series',
+  )
+  for (const id of ['fmr-10', 'fmr-26', 'fmr-27', 'fmr-28', 'hik-8', 'hik-22', 'qtr-6', 'qtr-15'])
     push(id, 'CHARGING', daysAgo(0, 7, 30), 'RMS', null)
-  for (const id of ['fmr-12', 'hik-9', 'qtr-7'])
+  for (const id of ['fmr-12', 'fmr-31', 'fmr-32', 'hik-9', 'hik-24', 'qtr-7', 'qtr-18'])
     push(id, 'RESERVE', daysAgo(1, 8, 0), 'MANUAL', 'Готов к резерву')
   return s
+}
+
+// ─── Миссии роботов (RMS/FMS; Отчёт §10.3) ─────────────────────────────────
+// WMS-интеграция на демо-стенде не подключена: единица работы — миссия робота
+// (RMS/FMS). Показатели называются миссиями и не выдаются за производственный
+// план склада (Отчёт §10.3/§12 «WMS»). Значения — демо-допущение набора.
+
+export interface MissionStats {
+  /** Создано миссий за 30 дней. */
+  created: number
+  /** Завершено без ошибки. */
+  completed: number
+  /** Прервано (ошибка/вмешательство). */
+  interrupted: number
+  /** В очереди сейчас. */
+  queued: number
+  /** Средняя длительность миссии, мин. */
+  avgMissionMin: number
+  /** Роботы без активной миссии сейчас. */
+  robotsWithoutMissions: number
+}
+
+export const MISSION_STATS: Record<string, MissionStats> = {
+  'site-pod': {
+    created: 4120,
+    completed: 4087,
+    interrupted: 21,
+    queued: 14,
+    avgMissionMin: 6.4,
+    robotsWithoutMissions: 3,
+  },
+  'site-obh': {
+    created: 3260,
+    completed: 3238,
+    interrupted: 14,
+    queued: 9,
+    avgMissionMin: 6.9,
+    robotsWithoutMissions: 2,
+  },
+  'site-dom': {
+    created: 2410,
+    completed: 2393,
+    interrupted: 9,
+    queued: 5,
+    avgMissionMin: 7.3,
+    robotsWithoutMissions: 1,
+  },
 }
 
 // ─── Incident templates (ТЗ v2.0 §10.3: 33 инцидента, 1075 мин, 986 667 ₽) ─
@@ -2147,6 +2314,107 @@ export function generateDemoData() {
       startedAt: null,
       completedAt: null,
       status: 'PLANNED',
+      result: null,
+      testRunPassed: null,
+      returnedToParkAt: null,
+      laborCost: 0,
+      partsCost: 0,
+      externalCost: 0,
+    },
+    // Активный бэклог расширенного парка (ACC-024): новые сервисные единицы.
+    {
+      id: 'mnt-019',
+      type: 'CORRECTIVE',
+      title: 'Диагностика колёсного модуля FMR-029',
+      problem: 'Повышенная вибрация при движении в A-3',
+      robotId: 'fmr-29',
+      siteId: 'site-pod',
+      incidentId: null,
+      executor: 'Сергей Иванов',
+      dueAt: daysAgo(0, 16, 0),
+      startedAt: daysAgo(1, 10, 0),
+      completedAt: null,
+      status: 'IN_PROGRESS',
+      result: null,
+      testRunPassed: null,
+      returnedToParkAt: null,
+      laborCost: 0,
+      partsCost: 0,
+      externalCost: 0,
+    },
+    {
+      id: 'mnt-020',
+      type: 'EMERGENCY',
+      title: 'Контрольный запуск FMR-030 после замены ролика',
+      problem: 'Замена приводного ролика завершена, выполняется контрольный запуск',
+      robotId: 'fmr-30',
+      siteId: 'site-pod',
+      incidentId: null,
+      executor: 'Сергей Иванов',
+      dueAt: daysAgo(0, 14, 0),
+      startedAt: daysAgo(3, 13, 20),
+      completedAt: null,
+      status: 'IN_PROGRESS',
+      result: null,
+      testRunPassed: null,
+      returnedToParkAt: null,
+      laborCost: 4200,
+      partsCost: 15600,
+      externalCost: 0,
+    },
+    {
+      id: 'mnt-021',
+      type: 'CORRECTIVE',
+      title: 'Диагностика локализации HIK-AMR-023',
+      problem: 'Повторные ошибки локализации в B-4',
+      robotId: 'hik-23',
+      siteId: 'site-obh',
+      incidentId: null,
+      executor: 'Сергей Иванов',
+      dueAt: daysAgo(0, 18, 0),
+      startedAt: daysAgo(0, 10, 5),
+      completedAt: null,
+      status: 'IN_PROGRESS',
+      result: null,
+      testRunPassed: null,
+      returnedToParkAt: null,
+      laborCost: 0,
+      partsCost: 0,
+      externalCost: 0,
+    },
+    {
+      id: 'mnt-022',
+      type: 'CORRECTIVE',
+      title: 'Диагностика датчика препятствий QTR-AMR-016',
+      problem: 'Ложные срабатывания датчика в C-3',
+      robotId: 'qtr-16',
+      siteId: 'site-dom',
+      incidentId: null,
+      executor: 'Сергей Иванов',
+      dueAt: daysAgo(1, 12, 0),
+      startedAt: daysAgo(1, 15, 45),
+      completedAt: null,
+      status: 'IN_PROGRESS',
+      result: null,
+      testRunPassed: null,
+      returnedToParkAt: null,
+      laborCost: 0,
+      partsCost: 0,
+      externalCost: 0,
+    },
+    {
+      id: 'mnt-023',
+      type: 'EMERGENCY',
+      title: 'Замена приводного ремня QTR-AMR-017 (M-series)',
+      problem: 'Ожидание запчасти от поставщика Geek+',
+      robotId: 'qtr-17',
+      siteId: 'site-dom',
+      incidentId: null,
+      executor: 'Сергей Иванов',
+      dueAt: daysAgo(-1, 12, 0),
+      startedAt: null,
+      completedAt: null,
+      status: 'WAITING_PARTS',
       result: null,
       testRunPassed: null,
       returnedToParkAt: null,

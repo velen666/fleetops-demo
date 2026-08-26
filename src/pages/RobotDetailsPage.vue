@@ -5,6 +5,7 @@ import { useDemoData } from '@/composables/useDemoData'
 import { robotMetrics } from '@/data/metrics'
 import { causeLabel } from '@/data/generator'
 import {
+  FLEET_STATE_RU,
   INCIDENT_STATUS_RU,
   INCIDENT_STATUS_CLASS,
   MAINTENANCE_STATUS_RU,
@@ -27,10 +28,15 @@ import { ArrowLeft, Bot } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
-const { robots, sites, incidents, downtimes, events, maintenance } = useDemoData()
+const { robots, sites, incidents, downtimes, events, maintenance, robotStates, substitutions } =
+  useDemoData()
 
 const robotId = computed(() => String(route.params.robotId ?? ''))
 const robot = computed(() => robots.value.find((r) => r.id === robotId.value))
+
+function robotName(id: string): string {
+  return robots.value.find((r) => r.id === id)?.name ?? id
+}
 
 function siteName(id: string): string {
   return sites.value.find((s) => s.id === id)?.name ?? id
@@ -61,6 +67,69 @@ const robotMaintenance = computed(() =>
     .filter((m) => m.robotId === robotId.value)
     .sort((a, b) => a.dueAt.localeCompare(b.dueAt)),
 )
+
+/**
+ * Реальная история единицы (ACC-017): смены состояний (RMS/FMS + ручные),
+ * участие в замещениях (повреждённая/резервная единица) и ключевые точки
+ * сервисных работ. Без обещаний будущих функций.
+ */
+interface HistoryRow {
+  time: string
+  label: string
+  source: string
+}
+
+const robotHistory = computed<HistoryRow[]>(() => {
+  const rows: HistoryRow[] = []
+  for (const s of robotStates.value) {
+    if (s.robotId !== robotId.value) continue
+    rows.push({
+      time: s.since,
+      label: `${FLEET_STATE_RU[s.state] ?? s.state}${s.comment ? ` — ${s.comment}` : ''}`,
+      source: s.source === 'MANUAL' ? 'ручная запись' : 'RMS/FMS',
+    })
+  }
+  for (const sub of substitutions.value) {
+    if (sub.damagedRobotId === robotId.value) {
+      rows.push({
+        time: sub.requestedAt,
+        label: `Повреждённая единица замещения; резерв — ${robotName(sub.backupRobotId)}`,
+        source: 'FleetOps',
+      })
+      if (sub.processRestoredAt)
+        rows.push({
+          time: sub.processRestoredAt,
+          label: 'Процесс восстановлен резервом',
+          source: 'FleetOps',
+        })
+    }
+    if (sub.backupRobotId === robotId.value) {
+      rows.push({
+        time: sub.assignedAt ?? sub.requestedAt,
+        label: `Резервная единица замещения; повреждённый — ${robotName(sub.damagedRobotId)}`,
+        source: 'FleetOps',
+      })
+      if (sub.engagedAt)
+        rows.push({
+          time: sub.engagedAt,
+          label: 'Введён в зону, мощность восстановлена',
+          source: 'FleetOps',
+        })
+    }
+  }
+  for (const m of robotMaintenance.value) {
+    if (m.startedAt) rows.push({ time: m.startedAt, label: `Сервис: ${m.title}`, source: 'ТОиР' })
+    if (m.completedAt)
+      rows.push({
+        time: m.completedAt,
+        label: `Сервис завершён: ${m.title}${m.testRunPassed ? ' (контрольный запуск пройден)' : ''}`,
+        source: 'ТОиР',
+      })
+    if (m.returnedToParkAt)
+      rows.push({ time: m.returnedToParkAt, label: 'Возвращён в парк', source: 'ТОиР' })
+  }
+  return rows.sort((a, b) => b.time.localeCompare(a.time))
+})
 
 const metrics = computed(() => {
   // Единые метрики (ACC-023): формула и период совпадают со списком роботов.
@@ -332,12 +401,34 @@ function goIncident(id: string): void {
       </TabsContent>
 
       <TabsContent value="history" class="tabs-content-spacing">
-        <Card
-          ><CardContent class="p-4 text-sm text-muted-foreground">
-            История изменений реквизитов робота (объект, зона, статус) появится после первых
-            пользовательских правок (пакет H — редактирование парка).
-          </CardContent></Card
-        >
+        <Card>
+          <CardContent class="p-0">
+            <!-- Реальная история единицы (ACC-017): состояния, замещения, сервис. -->
+            <Table v-if="robotHistory.length > 0">
+              <TableHeader
+                ><TableRow>
+                  <TableHead class="py-2 px-3">Время</TableHead>
+                  <TableHead class="py-2 px-3">Событие</TableHead>
+                  <TableHead class="py-2 px-3">Источник</TableHead>
+                </TableRow></TableHeader
+              >
+              <TableBody>
+                <TableRow v-for="(h, idx) in robotHistory" :key="idx">
+                  <TableCell class="text-xs tabular-nums py-2 px-3">{{
+                    h.time.slice(0, 16).replace('T', ' ')
+                  }}</TableCell>
+                  <TableCell class="text-xs py-2 px-3">{{ h.label }}</TableCell>
+                  <TableCell class="text-xs text-muted-foreground py-2 px-3">{{
+                    h.source
+                  }}</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+            <p v-else class="text-sm text-muted-foreground p-4">
+              За выбранный период записей об изменении состояний, замещениях и сервисе нет.
+            </p>
+          </CardContent>
+        </Card>
       </TabsContent>
     </Tabs>
   </div>

@@ -52,6 +52,11 @@ const filterStatus = ref(strParam(route.query.status, 'all'))
 const filterType = ref(strParam(route.query.type, 'all'))
 const filterQuick = ref(strParam(route.query.quick, 'all'))
 const searchText = ref(strParam(route.query.q, ''))
+// ACC-014 (Отчёт §4.2): период, вендор, модель, минимальная сумма потерь.
+const filterPeriod = ref(strParam(route.query.period, 'all'))
+const filterVendor = ref(strParam(route.query.vendor, 'all'))
+const filterModel = ref(strParam(route.query.model, 'all'))
+const filterMinLoss = ref(strParam(route.query.minLoss, ''))
 
 watch(
   [
@@ -64,8 +69,12 @@ watch(
     filterType,
     filterQuick,
     searchText,
+    filterPeriod,
+    filterVendor,
+    filterModel,
+    filterMinLoss,
   ],
-  ([site, robot, backup, cause, kind, status, type, quick, q]) => {
+  ([site, robot, backup, cause, kind, status, type, quick, q, period, vendor, model, minLoss]) => {
     void router.replace({
       query: {
         ...(site !== 'all' ? { site } : {}),
@@ -77,6 +86,10 @@ watch(
         ...(type !== 'all' ? { type } : {}),
         ...(quick !== 'all' ? { quick } : {}),
         ...(q ? { q } : {}),
+        ...(period !== 'all' ? { period } : {}),
+        ...(vendor !== 'all' ? { vendor } : {}),
+        ...(model !== 'all' ? { model } : {}),
+        ...(minLoss ? { minLoss } : {}),
       },
     })
   },
@@ -94,6 +107,16 @@ const causeOptions = computed(() => {
 const robotOptions = computed(() =>
   robots.value.filter((r) => filterSite.value === 'all' || r.siteId === filterSite.value),
 )
+// Alias для читаемости в фильтрации по вендору/модели (ACC-014).
+const robotsForFilter = robotOptions
+const vendorOptions = computed(() => [...new Set(robotOptions.value.map((r) => r.vendor))].sort())
+const modelOptions = computed(() => {
+  const src =
+    filterVendor.value === 'all'
+      ? robotOptions.value
+      : robotOptions.value.filter((r) => r.vendor === filterVendor.value)
+  return [...new Set(src.map((r) => r.model))].sort()
+})
 
 // ─── Фильтрация ──────────────────────────────────────────────────────────────
 
@@ -127,6 +150,32 @@ const filtered = computed(() => {
     list = list.filter((d) => d.confirmationStatus === filterStatus.value)
   // Тип интервала: операционное влияние / техническая недоступность.
   if (filterType.value !== 'all') list = list.filter((d) => d.intervalType === filterType.value)
+  // ACC-014: период от сегодня назад по startedAt.
+  if (filterPeriod.value !== 'all') {
+    const days = Number(filterPeriod.value)
+    if (Number.isFinite(days) && days > 0) {
+      const from = Date.now() - days * 86_400_000
+      list = list.filter((d) => Date.parse(d.startedAt) >= from)
+    }
+  }
+  // ACC-014: вендор/модель робота интервала.
+  if (filterVendor.value !== 'all' || filterModel.value !== 'all') {
+    const robotIds = new Set(
+      robotsForFilter.value
+        .filter(
+          (r) =>
+            (filterVendor.value === 'all' || r.vendor === filterVendor.value) &&
+            (filterModel.value === 'all' || r.model === filterModel.value),
+        )
+        .map((r) => r.id),
+    )
+    list = list.filter((d) => d.robotId != null && robotIds.has(d.robotId))
+  }
+  // ACC-014: минимальная сумма потерь.
+  const minLoss = Number(filterMinLoss.value)
+  if (filterMinLoss.value.trim() !== '' && Number.isFinite(minLoss)) {
+    list = list.filter((d) => d.lossRubles >= minLoss)
+  }
 
   // Быстрые представления (ТЗ §9.1)
   switch (filterQuick.value) {
@@ -405,6 +454,49 @@ function exportCsv(): void {
           v-model="searchText"
           aria-label="Поиск по простоям"
           placeholder="Инцидент, зона, описание..."
+        />
+      </div>
+      <!-- ACC-014: период, вендор, модель, минимальные потери. -->
+      <div class="space-y-1">
+        <span class="text-xs text-muted-foreground block">Период</span>
+        <Select v-model="filterPeriod" aria-label="Фильтр по периоду">
+          <SelectTrigger class="w-[130px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Весь период</SelectItem>
+            <SelectItem value="7">7 дней</SelectItem>
+            <SelectItem value="14">14 дней</SelectItem>
+            <SelectItem value="30">30 дней</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="space-y-1">
+        <span class="text-xs text-muted-foreground block">Вендор</span>
+        <Select v-model="filterVendor" aria-label="Фильтр по вендору">
+          <SelectTrigger class="w-[140px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все</SelectItem>
+            <SelectItem v-for="v in vendorOptions" :key="v" :value="v">{{ v }}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="space-y-1">
+        <span class="text-xs text-muted-foreground block">Модель</span>
+        <Select v-model="filterModel" aria-label="Фильтр по модели">
+          <SelectTrigger class="w-[170px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все</SelectItem>
+            <SelectItem v-for="m in modelOptions" :key="m" :value="m">{{ m }}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="space-y-1">
+        <span class="text-xs text-muted-foreground block">Потери от, ₽</span>
+        <Input
+          v-model="filterMinLoss"
+          aria-label="Минимальная сумма потерь"
+          inputmode="numeric"
+          placeholder="Например, 10000"
+          class="w-[150px]"
         />
       </div>
     </div>

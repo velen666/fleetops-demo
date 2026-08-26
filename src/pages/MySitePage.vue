@@ -5,8 +5,16 @@ import { useDemoData } from '@/composables/useDemoData'
 import { useAuthStore } from '@/stores/auth'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { FLEET_STATE_RU, FLEET_STATE_CLASS, MAINTENANCE_STATUS_RU } from '@/data/labels'
-import { CAUSE_CATALOG } from '@/data/generator'
-import { ArrowRight, Bot, MapPin, ShieldAlert, TrendingDown, Wrench } from 'lucide-vue-next'
+import { CAUSE_CATALOG, MISSION_STATS } from '@/data/generator'
+import {
+  ArrowRight,
+  Bot,
+  MapPin,
+  ShieldAlert,
+  TrendingDown,
+  Wrench,
+  Activity,
+} from 'lucide-vue-next'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -18,6 +26,9 @@ const site = computed(() => sites.value.find((s) => s.id === siteId.value))
 const siteZones = computed(() => zones.value.filter((z) => z.siteId === siteId.value))
 const siteRobots = computed(() => robots.value.filter((r) => r.siteId === siteId.value))
 const siteIncidents = computed(() => incidents.value.filter((i) => i.siteId === siteId.value))
+
+/** Миссии робота (RMS/FMS) — Отчёт §10.3: при отсутствии WMS-единицы работы. */
+const missions = computed(() => MISSION_STATS[siteId.value] ?? MISSION_STATS['site-pod'])
 
 // ─── Ключевые показатели (§8.1) ────────────────────────────────────────────
 
@@ -411,6 +422,47 @@ function fmtMoney(n: number): string {
                 {{ g.robots.map((r) => r.name).join(', ') }}
               </span>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <!-- Миссии роботов (RMS/FMS; Отчёт §10.3: при отсутствии WMS) -->
+      <Card>
+        <CardHeader>
+          <CardTitle class="flex items-center gap-2"
+            ><Activity class="size-4" /> Миссии роботов (RMS/FMS)</CardTitle
+          >
+          <p class="text-xs text-muted-foreground -mt-1">
+            WMS не подключена — единица работы: миссия робота, источник RMS/FMS. Не является
+            производственным планом склада.
+          </p>
+        </CardHeader>
+        <CardContent class="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div>
+            <p class="text-xs text-muted-foreground">Создано · 30 дней</p>
+            <p class="text-xl font-bold tabular-nums">{{ missions.created }}</p>
+          </div>
+          <div>
+            <p class="text-xs text-muted-foreground">Завершено без ошибки</p>
+            <p class="text-xl font-bold tabular-nums">{{ missions.completed }}</p>
+          </div>
+          <div>
+            <p class="text-xs text-muted-foreground">Прервано</p>
+            <p class="text-xl font-bold tabular-nums">{{ missions.interrupted }}</p>
+          </div>
+          <div>
+            <p class="text-xs text-muted-foreground">В очереди сейчас</p>
+            <p class="text-xl font-bold tabular-nums">{{ missions.queued }}</p>
+          </div>
+          <div>
+            <p class="text-xs text-muted-foreground">Средняя миссия</p>
+            <p class="text-xl font-bold tabular-nums">
+              {{ missions.avgMissionMin.toLocaleString('ru-RU') }} мин
+            </p>
+          </div>
+          <div>
+            <p class="text-xs text-muted-foreground">Без миссий сейчас</p>
+            <p class="text-xl font-bold tabular-nums">{{ missions.robotsWithoutMissions }}</p>
           </div>
         </CardContent>
       </Card>
