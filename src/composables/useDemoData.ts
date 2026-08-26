@@ -19,6 +19,7 @@ import type {
   MaintenanceWork,
 } from '@/types/domain'
 import { generateDemoData, CAUSE_CATALOG } from '@/data/generator'
+import { techAvailabilityPct } from '@/data/metrics'
 import {
   emptyOverlay,
   loadOverlay,
@@ -26,6 +27,7 @@ import {
   resetOverlay,
   type OverlayData,
 } from '@/lib/persistence'
+import { useAuthStore } from '@/stores/auth'
 
 const data = generateDemoData()
 
@@ -157,12 +159,108 @@ function safeNumber(v: unknown, fallback = 0): number {
   return typeof v === 'number' && !isNaN(v) ? v : fallback
 }
 
+// ─── Permission-гарды мутаций (Отчёт приёмки ACC-006) ───────────────────────
+// Право проверяется в сторе, а не только в UI: роль без права не может
+// изменить операционные данные (финансовая и директорская роли — read-only).
+
+interface GuardResult {
+  ok: boolean
+  reason?: string
+}
+
+function guard(perm: string): GuardResult {
+  const auth = useAuthStore()
+  if (!auth.isAuthenticated) return { ok: false, reason: 'Требуется вход в систему' }
+  if (!auth.can(perm)) return { ok: false, reason: 'Недостаточно прав для этого действия' }
+  return { ok: true }
+}
+
+// ─── Сценарное демо-время (Отчёт приёмки ACC-004) ───────────────────────────
+// Живой сценарий детерминирован: действия пишут сценарные метки, привязанные
+// к моменту обнаружения инцидента (ТЗ v2.0 §6: 09:12 → 09:37 → 17:40), а не к
+// wall-clock. Одинаковая последовательность действий даёт одинаковые
+// длительности и деньги (25 мин / 29 167 ₽; 8 ч 28 мин).
+
+/** Начальный шаг презентации: «начальник склада смотрит на объект» (мин). */
+const SCENARIO_PRESENTATION_MIN = 12
+
+/** Сценарные смещения действий от момента обнаружения (минуты, ТЗ §6). */
+const SCENARIO_STEPS_MIN: Record<string, number> = {
+  ASSIGN: 3, // 09:15 координатор принят
+  SUBSTITUTE: 10, // 09:22 резерв выбран
+  ENGAGE: 25, // 09:37 ввод резерва — контрольные 25 мин влияния
+  CLASSIFY: 53, // 10:05 причина по диагностике
+  ACTION_DONE: 493, // 17:25 ремонт и контрольный запуск завершены
+  RECOVERY: 494, // подтверждение восстановления
+  RETURN: 508, // 17:40 возврат в парк — контрольные 8 ч 28 мин
+  CLOSE: 510,
+}
+
+function incidentById(id: string): Incident | undefined {
+  return incidents.value.find((i) => i.id === id)
+}
+
+/** Все известные сценарные метки инцидента (сущности + история). */
+function scenarioMarks(incidentId: string): string[] {
+  const inc = incidentById(incidentId)
+  if (!inc) return []
+  const marks: string[] = [inc.detectedAt]
+  for (const t of timeline.value) {
+    if (t.incidentId === incidentId && t.timestamp) marks.push(t.timestamp)
+  }
+  for (const d of downtimes.value) {
+    if (d.incidentId !== incidentId) continue
+    marks.push(d.startedAt)
+    if (d.endedAt) marks.push(d.endedAt)
+    if (d.confirmedAt) marks.push(d.confirmedAt)
+  }
+  const sub = substitutionOf(incidentId)
+  if (sub) {
+    marks.push(sub.requestedAt)
+    if (sub.assignedAt) marks.push(sub.assignedAt)
+    if (sub.engagedAt) marks.push(sub.engagedAt)
+    if (sub.processRestoredAt) marks.push(sub.processRestoredAt)
+  }
+  for (const w of maintenance.value) {
+    if (w.incidentId !== incidentId) continue
+    if (w.startedAt) marks.push(w.startedAt)
+    if (w.completedAt) marks.push(w.completedAt)
+    if (w.returnedToParkAt) marks.push(w.returnedToParkAt)
+  }
+  return marks
+}
+
+/** Текущее сценарное время инцидента: максимум известных меток. */
+function clockNow(incidentId: string): string {
+  const inc = incidentById(incidentId)
+  if (!inc) return new Date().toISOString()
+  const base = Date.parse(inc.detectedAt) + SCENARIO_PRESENTATION_MIN * 60_000
+  let max = base
+  for (const m of scenarioMarks(incidentId)) {
+    const t = Date.parse(m)
+    if (!isNaN(t) && t > max) max = t
+  }
+  return new Date(max).toISOString()
+}
+
+/**
+ * Сценарная метка для действия: максимум из текущего сценарного времени и
+ * scripted-смещения действия (для engage/return — от начала интервала).
+ */
+function scenarioAt(incidentId: string, step?: keyof typeof SCENARIO_STEPS_MIN): string {
+  const inc = incidentById(incidentId)
+  const candidates = [Date.parse(clockNow(incidentId))]
+  if (inc && step !== undefined) {
+    candidates.push(Date.parse(inc.detectedAt) + SCENARIO_STEPS_MIN[step] * 60_000)
+  }
+  return new Date(Math.max(...candidates)).toISOString()
+}
+
 // ─── Calculated metrics (single source of truth) ────────────────────────────
 
 const stats = computed(() => {
   const incs = incidents.value ?? []
   const dts = downtimes.value ?? []
-  const totalPeriodSeconds = 30 * 24 * 3600
   // Только операционное влияние формирует потери процесса (ТЗ v2.0 §9.2);
   // техническая недоступность идёт в доступность актива, не в деньги.
   const impact = dts.filter(
@@ -176,8 +274,10 @@ const stats = computed(() => {
   ).length
   const classifiedCount = incs.length - unclassifiedCount
   const totalIncidents = incs.length
-  const availability =
-    totalPeriodSeconds > 0 ? 100 - (totalDowntime / totalPeriodSeconds) * 100 : 100
+  // Техническая доступность парка — единая формула metrics.ts (ACC-023):
+  // 1 − технедоступность / плановые часы (парк × 8 ч × 30 дней).
+  const fleetCount = robots.value?.length ?? 0
+  const availability = techAvailabilityPct(dts, fleetCount)
 
   const needsAttention = incs
     .filter(
@@ -286,7 +386,6 @@ const analytics = computed(() => {
 
 export type NextActionKind =
   | 'ASSIGN'
-  | 'SECURE'
   | 'SUBSTITUTE'
   | 'ENGAGE'
   | 'CLASSIFY'
@@ -314,11 +413,12 @@ function log(
   actorName: string,
   isAutomatic = false,
   details: Record<string, unknown> | null = null,
+  atIso?: string,
 ): void {
   appendTimeline({
     id: newTimelineId(),
     incidentId,
-    timestamp: new Date().toISOString(),
+    timestamp: atIso ?? clockNow(incidentId),
     eventType,
     summary,
     actorName,
@@ -351,18 +451,44 @@ function recomputeIncidentEconomics(incidentId: string): void {
   })
 }
 
-function assignCoordinator(incidentId: string, coordinatorName: string): void {
+function assignCoordinator(incidentId: string, coordinatorName: string): GuardResult {
+  const g = guard('incidents.assign')
+  if (!g.ok) return g
   const inc = incidents.value.find((i) => i.id === incidentId)
-  if (!inc) return
+  if (!inc) return { ok: false, reason: 'Инцидент не найден' }
+  const at = scenarioAt(incidentId, 'ASSIGN')
   const patch: WritablePartial<Incident> = {
     coordinatorId: `u-${coordinatorName}`,
     coordinatorName,
+    // Регламент безопасности — часть принятия инцидента (Отчёт §10.7):
+    // отдельной кнопки нет, фиксация автоматом.
+    safetyConfirmedAt: inc.safetyConfirmedAt ?? at,
   }
   if (inc.status === 'OPEN') patch.status = 'IN_PROGRESS'
   replaceIncident(incidentId, patch)
-  log(incidentId, 'ASSIGNED', `Назначен координатор: ${coordinatorName}`, coordinatorName, false, {
+  log(
+    incidentId,
+    'ASSIGNED',
+    `Назначен координатор: ${coordinatorName}`,
     coordinatorName,
-  })
+    false,
+    {
+      coordinatorName,
+    },
+    at,
+  )
+  if (inc.safetyConfirmedAt == null) {
+    log(
+      incidentId,
+      'SAFETY',
+      '(авто) Регламент безопасности выполнен: зона ограждена, робот выведен с критического пути',
+      'FleetOps',
+      true,
+      null,
+      at,
+    )
+  }
+  return { ok: true }
 }
 
 function addObservation(
@@ -370,7 +496,9 @@ function addObservation(
   text: string,
   actorName: string,
   evidence?: string,
-): void {
+): GuardResult {
+  const g = guard('events.create')
+  if (!g.ok) return g
   log(
     incidentId,
     'OBSERVATION',
@@ -379,6 +507,7 @@ function addObservation(
     false,
     evidence ? { evidence } : null,
   )
+  return { ok: true }
 }
 
 function classifyCause(
@@ -388,7 +517,16 @@ function classifyCause(
   actorName: string,
   maturity: 'PRIMARY' | 'REFINED' | 'FINAL',
   evidence: string[] = [],
-): void {
+): GuardResult {
+  const perm =
+    maturity === 'PRIMARY'
+      ? 'causes.classify'
+      : maturity === 'REFINED'
+        ? 'causes.refine'
+        : 'causes.confirm'
+  const g = guard(perm)
+  if (!g.ok) return g
+  const at = scenarioAt(incidentId, 'CLASSIFY')
   const cls = causeClassifications.value.find((c) => c.incidentId === incidentId)
   const version: CauseVersion = {
     sequence: (cls?.versions.length ?? 0) + 1,
@@ -396,7 +534,7 @@ function classifyCause(
     causeName: CAUSE_CATALOG[causeCode]?.name ?? causeCode,
     maturity,
     classifiedBy: actorName,
-    classifiedAt: new Date().toISOString(),
+    classifiedAt: at,
     comment,
     responsibilityZone: CAUSE_CATALOG[causeCode]?.zone ?? 'UNKNOWN',
     evidence,
@@ -419,10 +557,19 @@ function classifyCause(
       : maturity === 'REFINED'
         ? 'Причина уточнена'
         : 'Причина подтверждена'
-  log(incidentId, 'CAUSE', `${maturityRu}: ${version.causeName} — ${comment}`, actorName, false, {
-    causeCode,
-    maturity,
-  })
+  log(
+    incidentId,
+    'CAUSE',
+    `${maturityRu}: ${version.causeName} — ${comment}`,
+    actorName,
+    false,
+    {
+      causeCode,
+      maturity,
+    },
+    at,
+  )
+  return { ok: true }
 }
 
 interface ServiceActionInput {
@@ -434,7 +581,10 @@ interface ServiceActionInput {
   actorName: string
 }
 
-function createServiceAction(input: ServiceActionInput): void {
+function createServiceAction(input: ServiceActionInput): GuardResult {
+  const g = guard('actions.create')
+  if (!g.ok) return g
+  const at = scenarioAt(input.incidentId, 'CLASSIFY')
   const action: ServiceAction = {
     id: `act-u-${Date.now().toString(36)}`,
     incidentId: input.incidentId,
@@ -444,7 +594,7 @@ function createServiceAction(input: ServiceActionInput): void {
     status: 'CREATED',
     result: null,
     executorName: input.executor,
-    createdAt: new Date().toISOString(),
+    createdAt: at,
     startedAt: null,
     completedAt: null,
     comment: null,
@@ -465,7 +615,7 @@ function createServiceAction(input: ServiceActionInput): void {
       incidentId: inc.id,
       executor: input.executor,
       dueAt: input.dueAt,
-      startedAt: null,
+      startedAt: at,
       completedAt: null,
       status: 'ASSIGNED',
       result: null,
@@ -489,7 +639,9 @@ function createServiceAction(input: ServiceActionInput): void {
     input.actorName,
     false,
     { executor: input.executor, dueAt: input.dueAt },
+    at,
   )
+  return { ok: true }
 }
 
 function completeAction(
@@ -497,14 +649,39 @@ function completeAction(
   result: 'SUCCESS' | 'PARTIAL_SUCCESS' | 'FAILURE' | 'POSTPONED',
   comment: string,
   actorName: string,
-): void {
+): GuardResult {
+  const g = guard('actions.complete')
+  if (!g.ok) return g
+  const found = serviceActions.value.find((a) => a.id === actionId)
+  if (!found) return { ok: false, reason: 'Действие не найдено' }
+  const at = scenarioAt(found.incidentId, 'ACTION_DONE')
   const action = replaceAction(actionId, {
     status: result === 'POSTPONED' ? 'IN_PROGRESS' : 'COMPLETED',
     result,
-    completedAt: result === 'POSTPONED' ? null : new Date().toISOString(),
+    completedAt: result === 'POSTPONED' ? null : at,
     comment,
   })
-  if (!action) return
+  if (!action) return { ok: false, reason: 'Действие не найдено' }
+  // Авто-эффект: успешный результат действия завершает связанную аварийную
+  // работу ТОиР с положительным контрольным запуском (вертикальный путь ТЗ §6
+  // шаг 8; гейт возврата ACC-001 опирается на testRunPassed работы).
+  if (result === 'SUCCESS' || result === 'PARTIAL_SUCCESS') {
+    const work = maintenance.value.find(
+      (m) =>
+        m.incidentId === action.incidentId &&
+        m.title === action.actionTypeName &&
+        !['DONE', 'RESULT_CONFIRMED', 'CANCELLED'].includes(m.status),
+    )
+    if (work) {
+      replaceMaintenance(work.id, {
+        status: 'DONE',
+        result: result === 'SUCCESS' ? 'Успешно' : 'Частично',
+        testRunPassed: true,
+        completedAt: at,
+      })
+      replaceRobot(work.robotId, { fleetState: 'TEST_RUN' })
+    }
+  }
   log(
     action.incidentId,
     'ACTION_COMPLETED',
@@ -512,7 +689,9 @@ function completeAction(
     actorName,
     false,
     { result },
+    at,
   )
+  return { ok: true }
 }
 
 function confirmRecovery(
@@ -520,10 +699,13 @@ function confirmRecovery(
   basis: 'SUCCESSFUL_ACTION' | 'NO_ACTION_EXCEPTION',
   comment: string,
   actorName: string,
-): void {
+): GuardResult {
+  const g = guard('actions.recovery.confirm')
+  if (!g.ok) return g
+  const at = scenarioAt(incidentId, 'RECOVERY')
   const rec: RecoveryConfirmation = {
     incidentId,
-    recoveredAt: new Date().toISOString(),
+    recoveredAt: at,
     confirmedBy: actorName,
     basis,
     actionId: null,
@@ -538,7 +720,7 @@ function confirmRecovery(
   // отключение → восстановление).
   const dt = downtimeOf(incidentId)
   if (dt && !dt.endedAt) {
-    const endedAt = rec.recoveredAt
+    const endedAt = at
     const seconds = Math.max(
       60,
       Math.round((Date.parse(endedAt) - Date.parse(dt.startedAt)) / 1000),
@@ -558,9 +740,11 @@ function confirmRecovery(
     log(
       incidentId,
       'DOWNTIME',
-      `(авто) Интервал простоя закрыт моментом восстановления: ${new Date(seconds * 1000).toISOString().slice(11, 19)}`,
+      `(авто) Простой закрыт моментом восстановления: ${new Date(seconds * 1000).toISOString().slice(11, 19)}`,
       'FleetOps',
       true,
+      null,
+      endedAt,
     )
   }
   log(
@@ -568,7 +752,11 @@ function confirmRecovery(
     'RECOVERY',
     `Работоспособность восстановлена (${basis === 'SUCCESSFUL_ACTION' ? 'успешное действие' : 'без действия, исключение'}). ${comment}`,
     actorName,
+    false,
+    null,
+    at,
   )
+  return { ok: true }
 }
 
 function decideDowntime(
@@ -576,14 +764,17 @@ function decideDowntime(
   decision: 'CONFIRM' | 'REJECT' | 'ADJUST',
   actorName: string,
   options: { adjustedSeconds?: number; comment?: string } = {},
-): void {
+): GuardResult {
+  const g = guard('downtime.confirm')
+  if (!g.ok) return g
   const dt = downtimeOf(incidentId)
-  if (!dt) return
+  if (!dt) return { ok: false, reason: 'Простой не найден' }
+  const nowIso = clockNow(incidentId)
   if (decision === 'REJECT') {
     replaceDowntime(dt.id, {
       confirmationStatus: 'REJECTED',
       confirmedBy: actorName,
-      confirmedAt: new Date().toISOString(),
+      confirmedAt: nowIso,
       accountableDurationSeconds: 0,
       lossRubles: 0,
     })
@@ -595,15 +786,16 @@ function decideDowntime(
       actorName,
       false,
       { decision },
+      nowIso,
     )
-    return
+    return { ok: true }
   }
   let seconds = dt.accountableDurationSeconds
   const startedAt = dt.startedAt
   let endedAt = dt.endedAt
   if (!endedAt) {
-    // Подтверждение открытого интервала фиксирует конец сейчас (не 0.0 ч).
-    endedAt = new Date().toISOString()
+    // Подтверждение открытого интервала фиксирует конец по сценарию (не 0.0 ч).
+    endedAt = nowIso
     seconds = Math.max(60, Math.round((Date.parse(endedAt) - Date.parse(startedAt)) / 1000))
   }
   if (decision === 'ADJUST' && options.adjustedSeconds && options.adjustedSeconds > 0) {
@@ -614,7 +806,7 @@ function decideDowntime(
   replaceDowntime(dt.id, {
     confirmationStatus: decision === 'ADJUST' ? 'ADJUSTED' : 'CONFIRMED',
     confirmedBy: actorName,
-    confirmedAt: new Date().toISOString(),
+    confirmedAt: nowIso,
     endedAt,
     intervalState: 'CLOSED',
     calendarDurationSeconds: seconds,
@@ -633,21 +825,15 @@ function decideDowntime(
     actorName,
     false,
     { decision, seconds, loss },
+    nowIso,
   )
+  return { ok: true }
 }
 
 // ─── Замещение и две контрольные точки (ТЗ v2.0 §5.3/§6) ──────────────────
-
-function confirmSafety(incidentId: string, comment: string, actorName: string): void {
-  replaceIncident(incidentId, { safetyConfirmedAt: new Date().toISOString() })
-  log(
-    incidentId,
-    'SAFETY',
-    `Безопасность обеспечена: зона ограждена, робот выведен с критического пути${comment ? ` — ${comment}` : ''}`,
-    actorName,
-    false,
-  )
-}
+// Отдельное действие «Обеспечить безопасность» убрано (Отчёт §10.7/ACC-029):
+// регламент безопасности фиксируется автоматически при назначении координатора
+// (см. assignCoordinator) и остаётся условием закрытия инцидента.
 
 function availableBackups(siteId: string): Robot[] {
   return robots.value.filter((r) => r.siteId === siteId && r.fleetState === 'RESERVE')
@@ -680,7 +866,9 @@ function assignSubstitution(
   incidentId: string,
   backupRobotId: string,
   actorName: string,
-): { ok: boolean; reason?: string } {
+): GuardResult {
+  const g = guard('substitutions.create')
+  if (!g.ok) return g
   const inc = incidents.value.find((i) => i.id === incidentId)
   if (!inc) return { ok: false, reason: 'Инцидент не найден' }
   if (substitutionOf(incidentId)) return { ok: false, reason: 'Замещение уже назначено' }
@@ -691,6 +879,7 @@ function assignSubstitution(
   const damaged = robots.value.find((r) => r.id === inc.robotId)
   if (!damaged) return { ok: false, reason: 'Повреждённый робот не найден' }
   const zone = zones.value.find((z) => z.siteId === inc.siteId && inc.zoneName?.startsWith(z.code))
+  const at = scenarioAt(incidentId, 'SUBSTITUTE')
   const sub: Substitution = {
     id: `sub-u-${Date.now().toString(36)}`,
     incidentId,
@@ -700,8 +889,8 @@ function assignSubstitution(
     backupRobotId: backup.id,
     originalTask: inc.description.match(/M-\d+/)?.[0] ?? 'текущее задание',
     newTask: 'продолжение задания резервом',
-    requestedAt: new Date().toISOString(),
-    assignedAt: new Date().toISOString(),
+    requestedAt: at,
+    assignedAt: at,
     engagedAt: null,
     processRestoredAt: null,
     confirmedBy: null,
@@ -719,6 +908,7 @@ function assignSubstitution(
     actorName,
     false,
     { backupRobotId, damagedRobotId: damaged.id },
+    at,
   )
   return { ok: true }
 }
@@ -726,13 +916,16 @@ function assignSubstitution(
 /**
  * Ввод резерва = контрольная точка «Процесс восстановлен» (ТЗ §6 шаг 6):
  * закрывает операционное влияние (начисление потерь прекращается).
+ * Сценарная метка 09:37 даёт контрольные 25 мин / 29 167 ₽ (ACC-004).
  */
-function engageBackup(incidentId: string, actorName: string): { ok: boolean; reason?: string } {
+function engageBackup(incidentId: string, actorName: string): GuardResult {
+  const g = guard('substitutions.confirm')
+  if (!g.ok) return g
   const inc = incidents.value.find((i) => i.id === incidentId)
   const sub = substitutionOf(incidentId)
   if (!inc || !sub) return { ok: false, reason: 'Замещение не назначено' }
   if (sub.engagedAt) return { ok: false, reason: 'Резерв уже введён' }
-  const nowIso = new Date().toISOString()
+  const nowIso = scenarioAt(incidentId, 'ENGAGE')
   const next: Substitution = {
     ...sub,
     engagedAt: nowIso,
@@ -773,6 +966,7 @@ function engageBackup(incidentId: string, actorName: string): { ok: boolean; rea
       'WMS',
       true,
       { engagedAt: nowIso },
+      nowIso,
     )
   }
   log(
@@ -781,24 +975,50 @@ function engageBackup(incidentId: string, actorName: string): { ok: boolean; rea
     'Контрольная точка «Процесс восстановлен» подтверждена',
     actorName,
     false,
+    null,
+    nowIso,
   )
   return { ok: true }
 }
 
 /**
- * Контрольная точка «Робот возвращён в парк» (ТЗ §6 шаг 9): закрывает
- * техническую недоступность, возвращает резерв в пул.
+ * Гейт возврата робота в парк (ACC-001): разрешён только после финальной
+ * причины, подтверждённого восстановления и завершённого сервиса с
+ * положительным контрольным запуском. Единая проверка для карточки
+ * инцидента, ТОиР и очередей (ACC-002).
  */
-function returnRobotToPark(
-  incidentId: string,
-  actorName: string,
-): { ok: boolean; reason?: string } {
+function returnGate(incidentId: string): { ok: boolean; unmet: string[] } {
+  const inc = incidents.value.find((i) => i.id === incidentId)
+  if (!inc) return { ok: false, unmet: ['Инцидент не найден'] }
+  const unmet: string[] = []
+  const state = incidentProcessState(incidentId)
+  if (!state.processRestored) unmet.push('Процесс не восстановлен (резерв не введён)')
+  if (inc.causeMaturity !== 'FINAL') unmet.push('Финальная причина не подтверждена')
+  if (!inc.recoveryConfirmed) unmet.push('Восстановление не подтверждено')
+  const works = maintenance.value.filter((m) => m.incidentId === incidentId)
+  const finished = works.some(
+    (m) => m.testRunPassed === true && (m.status === 'DONE' || m.status === 'RESULT_CONFIRMED'),
+  )
+  if (!finished) unmet.push('Ремонт не завершён или контрольный запуск не пройден')
+  return { ok: unmet.length === 0, unmet }
+}
+
+/**
+ * Контрольная точка «Робот возвращён в парк» (ТЗ §6 шаг 9): закрывает
+ * техническую недоступность, возвращает резерв в пул. Сценарная метка 17:40
+ * даёт контрольные 8 ч 28 мин технической недоступности.
+ */
+function returnRobotToPark(incidentId: string, actorName: string): GuardResult {
+  const g = guard('incidents.recover')
+  if (!g.ok) return g
   const inc = incidents.value.find((i) => i.id === incidentId)
   if (!inc || !inc.robotId) return { ok: false, reason: 'Инцидент не найден' }
+  const gate = returnGate(incidentId)
+  if (!gate.ok) return { ok: false, reason: gate.unmet.join('; ') }
   const tech = techOf(incidentId)
   if (tech && tech.intervalState === 'CLOSED')
     return { ok: false, reason: 'Робот уже возвращён в парк' }
-  const nowIso = new Date().toISOString()
+  const nowIso = scenarioAt(incidentId, 'RETURN')
   if (tech) {
     const seconds = Math.max(
       60,
@@ -833,6 +1053,8 @@ function returnRobotToPark(
     `Контрольная точка «Робот возвращён в парк»: ${robot?.name ?? 'робот'} прошёл ремонт и контрольный запуск; техническая недоступность закрыта`,
     actorName,
     false,
+    null,
+    nowIso,
   )
   return { ok: true }
 }
@@ -882,12 +1104,14 @@ function completeMaintenance(
     externalCost?: number
   },
   actorName: string,
-): { ok: boolean; reason?: string } {
+): GuardResult {
+  const g = guard('maintenance.complete')
+  if (!g.ok) return g
   const work = maintenance.value.find((m) => m.id === workId)
   if (!work) return { ok: false, reason: 'Работа не найдена' }
   if (work.status === 'RESULT_CONFIRMED' || work.status === 'DONE')
     return { ok: false, reason: 'Работа уже завершена' }
-  const nowIso = new Date().toISOString()
+  const nowIso = scenarioAt(work.incidentId ?? '', 'ACTION_DONE')
   replaceMaintenance(workId, {
     status: 'DONE',
     result: input.result,
@@ -907,6 +1131,7 @@ function completeMaintenance(
       actorName,
       false,
       { workId },
+      nowIso,
     )
   return { ok: true }
 }
@@ -914,17 +1139,20 @@ function completeMaintenance(
 /**
  * Возврат робота в парк из бэклога (ТЗ §8.6): закрывает техническую
  * недоступность связанного инцидента, освобождает резерв, обновляет обзор.
+ * Гейт ACC-001: только после завершённого ремонта и пройденного контрольного
+ * запуска.
  */
-function returnRobotFromBacklog(
-  workId: string,
-  actorName: string,
-): { ok: boolean; reason?: string } {
+function returnRobotFromBacklog(workId: string, actorName: string): GuardResult {
+  const g = guard('maintenance.return')
+  if (!g.ok) return g
   const work = maintenance.value.find((m) => m.id === workId)
   if (!work) return { ok: false, reason: 'Работа не найдена' }
   if (work.returnedToParkAt) return { ok: false, reason: 'Робот уже возвращён' }
   if (work.status !== 'DONE' && work.status !== 'RESULT_CONFIRMED')
     return { ok: false, reason: 'Завершите ремонт с контрольным запуском' }
-  const nowIso = new Date().toISOString()
+  if (work.testRunPassed !== true)
+    return { ok: false, reason: 'Контрольный запуск не пройден — повторите запуск' }
+  const nowIso = scenarioAt(work.incidentId ?? '', 'RETURN')
   replaceMaintenance(workId, {
     status: 'RESULT_CONFIRMED',
     returnedToParkAt: nowIso,
@@ -946,11 +1174,14 @@ function returnRobotFromBacklog(
       actorName,
       false,
       { workId },
+      nowIso,
     )
   return { ok: true }
 }
 
-function closeIncident(incidentId: string, actorName: string): { ok: boolean; reason?: string } {
+function closeIncident(incidentId: string, actorName: string): GuardResult {
+  const g = guard('incidents.close')
+  if (!g.ok) return g
   const inc = incidents.value.find((i) => i.id === incidentId)
   if (!inc) return { ok: false, reason: 'Инцидент не найден' }
   if (!inc.safetyConfirmedAt) return { ok: false, reason: 'Безопасность зоны не подтверждена' }
@@ -968,17 +1199,29 @@ function closeIncident(incidentId: string, actorName: string): { ok: boolean; re
   if (acts.length > 0 && !acts.some((a) => a.status === 'COMPLETED')) {
     return { ok: false, reason: 'Нет завершённого сервисного действия' }
   }
-  const closedAt = new Date().toISOString()
+  const closedAt = scenarioAt(incidentId, 'CLOSE')
   replaceIncident(incidentId, { status: 'CLOSED', closedAt })
-  log(incidentId, 'CLOSED', 'Инцидент закрыт; простой и потери зафиксированы', actorName, false, {
+  log(
+    incidentId,
+    'CLOSED',
+    'Инцидент закрыт; простой и потери зафиксированы',
+    actorName,
+    false,
+    {
+      closedAt,
+    },
     closedAt,
-  })
+  )
   return { ok: true }
 }
 
-function reopenIncident(incidentId: string, reason: string, actorName: string): void {
+function reopenIncident(incidentId: string, reason: string, actorName: string): GuardResult {
+  const g = guard('incidents.state.manage')
+  if (!g.ok) return g
+  const at = clockNow(incidentId)
   replaceIncident(incidentId, { status: 'IN_PROGRESS', closedAt: null })
-  log(incidentId, 'REOPENED', `Инцидент переоткрыт: ${reason}`, actorName, false, { reason })
+  log(incidentId, 'REOPENED', `Инцидент переоткрыт: ${reason}`, actorName, false, { reason }, at)
+  return { ok: true }
 }
 
 function readyToClose(incidentId: string): boolean {
@@ -1001,9 +1244,8 @@ function nextStep(incidentId: string): NextStep | null {
   const owner = inc.coordinatorName ?? ''
   if (!inc.coordinatorId)
     return { kind: 'ASSIGN', label: 'Назначить координатора', owner: 'Диспетчер' }
-  // Вертикальный путь (ТЗ v2.0 §6): безопасность → резерв → ввод → причина → сервис → возврат.
-  if (!inc.safetyConfirmedAt)
-    return { kind: 'SECURE', label: 'Обеспечить безопасность зоны', owner }
+  // Вертикальный путь (ТЗ v2.0 §6): резерв → ввод → причина → сервис → возврат.
+  // Безопасность фиксируется автоматически при назначении координатора.
   const sub = substitutionOf(incidentId)
   const tech = techOf(incidentId)
   const techOpen = tech?.intervalState === 'OPEN'
@@ -1066,6 +1308,8 @@ export interface ManualIncidentInput {
 }
 
 function createManualIncident(input: ManualIncidentInput): Incident {
+  const g = guard('incidents.create')
+  if (!g.ok) throw new Error(g.reason ?? 'Недостаточно прав')
   const n = incidents.value.length + 1
   const nowIso = new Date().toISOString()
   const incident: Incident = {
@@ -1189,11 +1433,12 @@ export function useDemoData() {
     analytics,
     // рабочий сценарий
     overlayReady,
+    incidentClock: clockNow,
     assignCoordinator,
-    confirmSafety,
     assignSubstitution,
     engageBackup,
     returnRobotToPark,
+    returnGate,
     incidentProcessState,
     availableBackups,
     completeMaintenance,

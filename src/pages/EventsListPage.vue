@@ -47,7 +47,12 @@ import { incidentTypeLabel } from '@/data/generator'
 import { EVENT_STATUS_RU, EVENT_STATUS_CLASS, sourceInstanceLabel } from '@/data/labels'
 import type { OperationalEvent } from '@/types/domain'
 
-const { events, sites, robots } = useDemoData()
+const { events, sites, robots, incidents } = useDemoData()
+
+/** Канонический номер инцидента (ACC-008): внутренний ключ не показывается. */
+function incidentNumberOf(incidentId: string): string {
+  return incidents.value.find((i) => i.id === incidentId)?.incidentNumber ?? incidentId
+}
 const auth = useAuthStore()
 
 const filterStatus = ref<string>('all')
@@ -200,9 +205,9 @@ function submitRegister(): void {
                 <RouterLink
                   v-if="event.incidentId"
                   :to="{ name: 'incident-details', params: { incidentId: event.incidentId } }"
-                  class="text-primary hover:underline"
+                  class="text-primary hover:underline font-mono"
                   @click.stop
-                  >{{ event.incidentId }}</RouterLink
+                  >{{ incidentNumberOf(event.incidentId) }}</RouterLink
                 >
                 <span v-else class="text-muted-foreground">—</span>
               </TableCell>

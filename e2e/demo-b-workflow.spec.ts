@@ -45,21 +45,12 @@ test('сквозной разбор (v2 §6): координатор → без�
   await page.waitForURL(/\/incidents\//, { timeout: 10_000 })
   await expect(page.getByText('Следующее действие:').first()).toBeVisible({ timeout: 10_000 })
 
-  // 1. Принять в работу
+  // 1. Принять в работу (безопасность фиксируется автоматически — ACC-029)
   await page.locator('button', { hasText: 'Назначить координатора' }).click()
   await page.locator('[role="dialog"] button', { hasText: 'Принять в работу' }).click()
   await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 5_000 })
 
-  // 2. Безопасность (ТЗ §6 шаг 4)
-  await page.locator('button', { hasText: 'Обеспечить безопасность' }).click()
-  const safetyDlg = page.locator('[role="dialog"]')
-  await safetyDlg
-    .locator('textarea')
-    .fill('Зона C-12 ограждена, FMR-001 выведен с критического пути на сервисную стоянку')
-  await safetyDlg.locator('button', { hasText: 'Подтвердить безопасность' }).click()
-  await expect(safetyDlg).toBeHidden({ timeout: 5_000 })
-
-  // 3. Назначить резерв FMR-012 (шаг 5)
+  // 2. Назначить резерв FMR-012 (шаг 5)
   await page.locator('button', { hasText: 'Назначить резерв' }).click()
   const subDlg = page.locator('[role="dialog"]')
   await subDlg.getByRole('combobox', { name: /Резервный робот/ }).click()
@@ -156,7 +147,7 @@ test('сквозной разбор (v2 §6): координатор → без�
   const historyText = await page.locator('body').textContent()
   expect(historyText).toContain('Причина подтверждена')
   expect(historyText).toContain('(авто)')
-  expect(historyText).toContain('Безопасность обеспечена')
+  expect(historyText).toContain('Регламент безопасности выполнен')
   expect(historyText).toContain('мощность зоны восстановлена')
   expect(historyText).toContain('возвращён в парк')
   expect(historyText).toContain('Инцидент закрыт')

@@ -16,9 +16,9 @@ test('E: analytics — views, filters, RT block without SLA', async ({ page }) =
   // 32.2 KPI: доступность с формулой (числитель/знаменатель)
   await expect(page.getByText(/1 − .*ч \//).first()).toBeVisible()
 
-  // 32.6: блок RT — медианы/p90/n, без «SLA»
+  // 32.6: блок RT — медианы/90-й перцентиль/n, без «SLA»
   await expect(page.getByText('медиана').first()).toBeVisible()
-  await expect(page.getByText('p90').first()).toBeVisible()
+  await expect(page.getByText('90-й перцентиль').first()).toBeVisible()
   await expect(page.getByText('в расчёте').first()).toBeVisible()
   const body1 = await page.locator('main').textContent()
   expect(body1).not.toContain('SLA')

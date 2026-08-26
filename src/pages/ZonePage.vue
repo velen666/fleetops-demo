@@ -301,9 +301,9 @@ function goRobot(id: string): void {
         </CardContent>
       </Card>
 
-      <!-- Интервалы зоны -->
+      <!-- Простои зоны -->
       <Card>
-        <CardHeader><CardTitle class="text-base">Интервалы зоны</CardTitle></CardHeader>
+        <CardHeader><CardTitle class="text-base">Простои зоны</CardTitle></CardHeader>
         <CardContent class="p-0">
           <Table>
             <TableHeader
@@ -315,9 +315,7 @@ function goRobot(id: string): void {
               </TableRow></TableHeader
             >
             <TableBody>
-              <TableEmpty v-if="zoneDowntimes.length === 0" :colspan="4"
-                >Интервалов нет.</TableEmpty
-              >
+              <TableEmpty v-if="zoneDowntimes.length === 0" :colspan="4">Записей нет.</TableEmpty>
               <TableRow
                 v-for="d in zoneDowntimes"
                 :key="d.id"

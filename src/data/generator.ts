@@ -452,24 +452,14 @@ function buildRobots(): Robot[] {
       sourceInstanceId: srcId,
     }
   }
-  robots.push(
-    mk(
-      'fmr-1',
-      'FMR-001',
-      'FMR (класс решения; модель не подтверждена)',
-      'Синтетическая демо-легенда',
-      'site-pod',
-      'src-fm-pod',
-      'FMR',
-    ),
-  )
+  robots.push(mk('fmr-1', 'FMR-001', 'Ronavi H1500', 'Ronavi', 'site-pod', 'src-fm-pod', 'FMR'))
   for (let i = 4; i <= 12; i++)
     robots.push(
       mk(
         `fmr-${i}`,
         `FMR-${String(i).padStart(3, '0')}`,
-        'FMR (класс решения; модель не подтверждена)',
-        'Синтетическая демо-легенда',
+        'Ronavi H1500',
+        'Ronavi',
         'site-pod',
         'src-fm-pod',
         'FMR',
@@ -480,7 +470,7 @@ function buildRobots(): Robot[] {
       mk(
         `hik-${i}`,
         `HIK-AMR-${String(i).padStart(3, '0')}`,
-        'HIK AMR (модель не подтверждена)',
+        'HIK Robot AMR',
         'HIK Robotics',
         'site-obh',
         'src-hik-obh',
@@ -492,8 +482,8 @@ function buildRobots(): Robot[] {
       mk(
         `qtr-${i}`,
         `QTR-AMR-${String(i).padStart(3, '0')}`,
-        'Quicktron M60 (синтетический парк)',
-        'Quicktron',
+        'Geek+ P-series',
+        'Geek+',
         'site-dom',
         'src-qrcs-dom',
         'QTR',
@@ -2481,11 +2471,13 @@ function rawEventsFor(
   robotId: string,
   zone: string,
 ): Array<{ src: string; code: string; msg: string; payload: Record<string, unknown> }> {
+  // Канонические идентификаторы с паддингом (ACC-020): FMR-001, не FMR-1.
+  const num = (id: string) => id.replace(/\D/g, '').padStart(3, '0')
   const name = robotId.startsWith('hik')
-    ? robotId.replace('hik-', 'HIK-AMR-')
+    ? `HIK-AMR-${num(robotId)}`
     : robotId.startsWith('fmr')
-      ? robotId.replace('fmr-', 'FMR-')
-      : robotId.replace('qtr-', 'QTR-AMR-')
+      ? `FMR-${num(robotId)}`
+      : `QTR-AMR-${num(robotId)}`
   switch (type) {
     case 'IT-011':
       return [

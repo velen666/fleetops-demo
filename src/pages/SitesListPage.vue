@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useDemoData } from '@/composables/useDemoData'
+import { techAvailabilityPct } from '@/data/metrics'
 import { useTenantScope } from '@/composables/useTenantScope'
 import { useRouter } from 'vue-router'
 const router = useRouter()
@@ -30,8 +31,6 @@ const { sites, robots, incidents, downtimes, costRates } = useDemoData()
 
 const selectedSite = ref<Site | null>(null)
 const searchText = ref('')
-
-const SITE_FUND_H = 30 * 24 // hours per robot per 30 days
 
 const siteMetrics = computed(() => {
   const map = new Map<
@@ -69,11 +68,12 @@ const siteMetrics = computed(() => {
   return map
 })
 
+/** Техническая доступность объекта: единая формула metrics.ts (ACC-023). */
 function availability(siteId: string): number {
   const m = siteMetrics.value.get(siteId)
-  if (!m || m.robotCount === 0) return 100
-  const fundH = m.robotCount * SITE_FUND_H
-  return Math.max(0, 100 - (m.dtSeconds / 3600 / fundH) * 100)
+  if (!m) return 100
+  const siteDts = downtimes.value.filter((d) => d.siteId === siteId)
+  return techAvailabilityPct(siteDts, m.robotCount)
 }
 
 // Tenant-модель (§3): реестр объектов — только разрешённые.

@@ -540,7 +540,7 @@ function exportCsv(): void {
           <DialogTitle>Ручная регистрация инцидента</DialogTitle>
           <DialogDescription>
             Обязательные поля: объект, зона, наблюдение и приоритет. Первичное доказательство —
-            наблюдение оператора; учётный интервал простоя открывается опционально.
+            наблюдение оператора; простой с влиянием на процесс открывается опционально.
           </DialogDescription>
         </DialogHeader>
         <div class="space-y-3">
@@ -601,10 +601,10 @@ function exportCsv(): void {
             <input
               v-model="createWithDowntime"
               type="checkbox"
-              aria-label="Открыть учётный интервал простоя"
+              aria-label="Открыть простой с влиянием на процесс"
               class="accent-primary"
             />
-            Открыть учётный интервал простоя
+            Открыть простой с влиянием на процесс
           </label>
         </div>
         <DialogFooter>

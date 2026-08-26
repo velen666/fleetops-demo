@@ -33,7 +33,7 @@ import { Input } from '@/components/ui/input'
 import { Download } from 'lucide-vue-next'
 import { downloadCsv } from '@/lib/csv'
 
-const { downtimes, incidents, sites, robots, substitutions } = useDemoData()
+const { downtimes, incidents, sites, robots, substitutions, incidentClock } = useDemoData()
 const route = useRoute()
 const router = useRouter()
 
@@ -247,6 +247,12 @@ function fmtDur(sec: number): string {
   const m = Math.floor((sec % 3600) / 60)
   return h > 0 ? `${h} ч ${m} мин` : `${m} мин`
 }
+
+/** Текущая длительность открытого простоя по сценарному времени инцидента. */
+function openDuration(dt: Downtime): number {
+  const nowIso = incidentClock(dt.incidentId)
+  return Math.max(0, Math.round((Date.parse(nowIso) - Date.parse(dt.startedAt)) / 1000))
+}
 function goToIncident(incidentId: string): void {
   router.push({ name: 'incident-details', params: { incidentId } })
 }
@@ -271,7 +277,7 @@ function exportCsv(): void {
     `downtimes-${new Date().toISOString().slice(0, 10)}.csv`,
     [
       'Инцидент',
-      'Тип интервала',
+      'Тип учёта',
       'Объект',
       'Зона',
       'Робот',
@@ -318,8 +324,8 @@ function exportCsv(): void {
         </Select>
       </div>
       <div class="space-y-1">
-        <span class="text-xs text-muted-foreground block">Тип интервала</span>
-        <Select v-model="filterType" aria-label="Фильтр по типу интервала">
+        <span class="text-xs text-muted-foreground block">Тип учёта</span>
+        <Select v-model="filterType" aria-label="Фильтр по типу учёта">
           <SelectTrigger class="w-[230px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Все типы</SelectItem>
@@ -381,8 +387,8 @@ function exportCsv(): void {
         </Select>
       </div>
       <div class="space-y-1">
-        <span class="text-xs text-muted-foreground block">Статус интервала</span>
-        <Select v-model="filterStatus" aria-label="Фильтр по статусу интервала">
+        <span class="text-xs text-muted-foreground block">Статус подтверждения</span>
+        <Select v-model="filterStatus" aria-label="Фильтр по статусу подтверждения">
           <SelectTrigger class="w-[180px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Все</SelectItem>
@@ -406,10 +412,11 @@ function exportCsv(): void {
     <!-- Сводка текущей выборки (ТЗ §9.1: часы и потери по типам раздельно) -->
     <div class="flex flex-wrap gap-4 text-sm text-muted-foreground">
       <span
-        >Интервалов:
+        >Записей:
         <strong class="text-foreground tabular-nums">{{ summary.count }}</strong>
-        <span class="text-xs"
-          >(влияние: {{ summary.impactCount }} · недоступность: {{ summary.techCount }})</span
+        <span class="text-xs text-muted-foreground"
+          >(подтверждено {{ summary.confirmedCount }}: влияние {{ summary.impactCount }} ·
+          недоступность {{ summary.techCount }})</span
         ></span
       >
       <span
@@ -459,7 +466,7 @@ function exportCsv(): void {
           <TableHeader>
             <TableRow>
               <TableHead>Инцидент</TableHead>
-              <TableHead>Тип интервала</TableHead>
+              <TableHead>Тип учёта</TableHead>
               <TableHead>Объект · зона</TableHead>
               <TableHead>Робот</TableHead>
               <TableHead>Начало</TableHead>
@@ -473,7 +480,7 @@ function exportCsv(): void {
           </TableHeader>
           <TableBody>
             <TableEmpty v-if="filtered.length === 0" :colspan="12">
-              По выбранным фильтрам интервалов нет.
+              По выбранным фильтрам записей нет.
             </TableEmpty>
             <TableRow
               v-for="dt in filtered"
@@ -511,9 +518,13 @@ function exportCsv(): void {
                 <span v-if="dt.endedAt">{{ fmtTime(dt.endedAt) }}</span>
                 <span v-else class="text-warning">продолжается</span>
               </TableCell>
-              <TableCell class="text-xs tabular-nums py-2 px-3">{{
-                fmtDur(dt.accountableDurationSeconds)
-              }}</TableCell>
+              <TableCell class="text-xs tabular-nums py-2 px-3">
+                <!-- Открытый простой: «идёт» + сценарная текущая длительность (ACC-015). -->
+                <template v-if="dt.intervalState === 'OPEN' && !dt.endedAt">
+                  <span class="text-warning">идёт {{ fmtDur(openDuration(dt)) }}</span>
+                </template>
+                <template v-else>{{ fmtDur(dt.accountableDurationSeconds) }}</template>
+              </TableCell>
               <TableCell class="text-xs text-muted-foreground py-2 px-3">{{
                 DOWNTIME_KIND_RU[dt.kind]
               }}</TableCell>

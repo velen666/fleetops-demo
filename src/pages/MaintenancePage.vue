@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { useDemoData } from '@/composables/useDemoData'
 import { useTenantScope } from '@/composables/useTenantScope'
+import { useAuthStore } from '@/stores/auth'
 import { MAINTENANCE_STATUS_RU, MAINTENANCE_TYPE_RU } from '@/data/labels'
 import type { MaintenanceWork } from '@/types/domain'
 import { Card, CardContent } from '@/components/ui/card'
@@ -36,6 +37,7 @@ import { Input } from '@/components/ui/input'
 const { maintenance, sites, robots, incidents, completeMaintenance, returnRobotFromBacklog } =
   useDemoData()
 const router = useRouter()
+const auth = useAuthStore()
 
 // Tenant-модель (§3): работы только разрешённых объектов.
 const scope = useTenantScope()
@@ -46,7 +48,9 @@ const filterType = ref('all')
 const filterStatus = ref('all')
 const filterSite = ref('all')
 const filterExecutor = ref('all')
-const filterQuick = ref('all')
+// Точка входа сервисного инженера (ACC-005/019): «мои работы» по умолчанию.
+const isEngineer = computed(() => auth.activeRoleCode === 'SERVICE_ENGINEER')
+const filterQuick = ref(isEngineer.value ? 'mine' : 'all')
 const searchText = ref('')
 const selected = ref<MaintenanceWork | null>(null)
 const actionError = ref<string | null>(null)
@@ -79,6 +83,14 @@ const filtered = computed(() => {
     result = result.filter((m) => m.executor === filterExecutor.value)
   switch (filterQuick.value) {
     // Представления сервисного бэклога (ТЗ v2.0 §8.6)
+    case 'mine':
+      // Личная очередь инженера (ACC-019): назначенные мне незавершённые работы.
+      result = result.filter(
+        (m) =>
+          m.executor === (auth.user?.name ?? '') &&
+          !['RESULT_CONFIRMED', 'CANCELLED'].includes(m.status),
+      )
+      break
     case 'new':
       result = result.filter((m) => ['PLANNED', 'ASSIGNED'].includes(m.status))
       break
@@ -241,6 +253,7 @@ function totalCost(m: MaintenanceWork): number {
     <div class="flex flex-wrap gap-2">
       <Button
         v-for="q in [
+          { key: 'mine', label: 'Мои работы' },
           { key: 'new', label: 'Новые' },
           { key: 'diagnostics', label: 'Диагностика' },
           { key: 'waiting_parts', label: 'Ожидает запчасти' },

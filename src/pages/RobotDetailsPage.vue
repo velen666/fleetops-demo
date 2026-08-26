@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDemoData } from '@/composables/useDemoData'
+import { robotMetrics } from '@/data/metrics'
 import { causeLabel } from '@/data/generator'
 import {
   INCIDENT_STATUS_RU,
@@ -62,11 +63,8 @@ const robotMaintenance = computed(() =>
 )
 
 const metrics = computed(() => {
-  const confirmed = robotDowntimes.value.filter(
-    (d) => d.confirmationStatus === 'CONFIRMED' || d.confirmationStatus === 'ADJUSTED',
-  )
-  const dtSec = confirmed.reduce((s, d) => s + d.accountableDurationSeconds, 0)
-  const fund = 30 * 24
+  // Единые метрики (ACC-023): формула и период совпадают со списком роботов.
+  const rm = robotMetrics(robotDowntimes.value)
   // повторяющиеся причины робота
   const byCause = new Map<string, number>()
   for (const i of robotIncidents.value) {
@@ -80,9 +78,10 @@ const metrics = computed(() => {
   return {
     incidentsCount: robotIncidents.value.length,
     activeIncidents: robotIncidents.value.filter((i) => i.status !== 'CLOSED').length,
-    dtHours: dtSec / 3600,
-    loss: confirmed.reduce((s, d) => s + d.lossRubles, 0),
-    availability: Math.max(0, 100 - (dtSec / 3600 / fund) * 100),
+    techHours: rm.techSeconds / 3600,
+    impactHours: rm.impactSeconds / 3600,
+    loss: rm.lossRubles,
+    availability: rm.techAvailabilityPct,
     repeatCauses,
     lastWork: sorted.find((m) => m.completedAt) ?? null,
     nextWork: sorted.find((m) => !m.completedAt) ?? null,
@@ -125,7 +124,7 @@ function goIncident(id: string): void {
         </div>
         <div class="grid grid-cols-2 md:grid-cols-5 gap-4 border-t pt-3">
           <div>
-            <p class="text-xs text-muted-foreground">Доступность (30 дней)</p>
+            <p class="text-xs text-muted-foreground">Техническая доступность (30 дней)</p>
             <p class="text-lg font-bold tabular-nums text-success">
               {{ metrics.availability.toFixed(1) }}%
             </p>
@@ -135,26 +134,28 @@ function goIncident(id: string): void {
             <p class="text-lg font-bold tabular-nums">{{ metrics.activeIncidents }}</p>
           </div>
           <div>
-            <p class="text-xs text-muted-foreground">Простой</p>
-            <p class="text-lg font-bold tabular-nums">{{ metrics.dtHours.toFixed(1) }} ч</p>
+            <p class="text-xs text-muted-foreground">Операционное влияние</p>
+            <p class="text-lg font-bold tabular-nums">{{ metrics.impactHours.toFixed(1) }} ч</p>
           </div>
           <div>
-            <p class="text-xs text-muted-foreground">Потери</p>
+            <p class="text-xs text-muted-foreground">Техническая недоступность</p>
+            <p class="text-lg font-bold tabular-nums">{{ metrics.techHours.toFixed(1) }} ч</p>
+          </div>
+          <div>
+            <p class="text-xs text-muted-foreground">Потери процесса</p>
             <p class="text-lg font-bold tabular-nums">
               {{ metrics.loss.toLocaleString('ru-RU') }} ₽
             </p>
           </div>
-          <div>
-            <p class="text-xs text-muted-foreground">Повторяющиеся причины</p>
-            <p
-              v-for="[code, n] in metrics.repeatCauses"
-              :key="code"
-              class="text-xs text-muted-foreground"
-            >
-              {{ causeLabel(code) }} × {{ n }}
-            </p>
-            <p v-if="metrics.repeatCauses.length === 0" class="text-xs text-muted-foreground">—</p>
-          </div>
+        </div>
+        <div
+          v-if="metrics.repeatCauses.length"
+          class="flex flex-wrap gap-4 text-xs text-muted-foreground border-t pt-2"
+        >
+          <span>Повторяющиеся причины:</span>
+          <span v-for="[code, n] in metrics.repeatCauses" :key="code" class="tabular-nums">
+            {{ causeLabel(code) }} × {{ n }}
+          </span>
         </div>
         <div
           v-if="metrics.nextWork || metrics.lastWork"

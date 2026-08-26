@@ -40,10 +40,27 @@ interface NavItem {
   sidebarOrder: number
   requiredPermission?: string
   requiredRole?: string
+  requiredRoles?: string[]
 }
 
 const allNavItems: NavItem[] = [
   { name: 'overview', title: 'Обзор', icon: 'LayoutDashboard', sidebarOrder: 10 },
+  {
+    // Портфель роботизации (Отчёт §10.4) — главная руководителя эксплуатации.
+    name: 'portfolio',
+    title: 'Портфель',
+    icon: 'LayoutDashboard',
+    sidebarOrder: 8,
+    requiredRoles: ['SYSTEM_ADMIN', 'FLEET_OPERATIONS_MANAGER', 'SERVICE_MANAGER'],
+  },
+  {
+    // Экономика эксплуатации (Отчёт §10.5) — главная финансовой роли.
+    name: 'finance-home',
+    title: 'Экономика',
+    icon: 'TrendingDown',
+    sidebarOrder: 8,
+    requiredRoles: ['OPERATIONS_DIRECTOR', 'FINANCE_MANAGER', 'SYSTEM_ADMIN'],
+  },
   {
     // Объектовый дашборд (ТЗ v2.0 §8.1) — стартовый экран начальника склада.
     name: 'my-site',
@@ -89,6 +106,14 @@ const allNavItems: NavItem[] = [
   },
   { name: 'robots', title: 'Роботы', icon: 'Bot', sidebarOrder: 60 },
   {
+    // Сервис и ТОиР (ACC-005): раздел доступен из навигации, а не только по URL.
+    name: 'maintenance',
+    title: 'Сервис и ТОиР',
+    icon: 'Wrench',
+    sidebarOrder: 63,
+    requiredPermission: 'actions.read',
+  },
+  {
     name: 'reports',
     title: 'Отчёты',
     icon: 'FileText',
@@ -98,11 +123,18 @@ const allNavItems: NavItem[] = [
 ]
 
 const navItems = computed(() =>
-  allNavItems.filter((item) => {
-    if (item.requiredRole && auth.activeRoleCode !== item.requiredRole) return false
-    if (item.name === 'overview' && auth.activeRoleCode === 'SITE_MANAGER') return false
-    return !item.requiredPermission || auth.can(item.requiredPermission)
-  }),
+  allNavItems
+    .filter((item) => {
+      if (item.requiredRole && auth.activeRoleCode !== item.requiredRole) return false
+      if (
+        item.requiredRoles &&
+        (!auth.activeRoleCode || !item.requiredRoles.includes(auth.activeRoleCode))
+      )
+        return false
+      if (item.name === 'overview' && auth.activeRoleCode === 'SITE_MANAGER') return false
+      return !item.requiredPermission || auth.can(item.requiredPermission)
+    })
+    .sort((a, b) => a.sidebarOrder - b.sidebarOrder),
 )
 
 const currentTitle = computed(() => (route.meta?.title as string) ?? 'FleetOps')

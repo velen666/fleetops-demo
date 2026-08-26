@@ -2,6 +2,11 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDemoData } from '@/composables/useDemoData'
+import {
+  plannedRobotHours as plannedRobotHoursOf,
+  powerAvailabilityPct,
+  techAvailabilityPct,
+} from '@/data/metrics'
 import { useTenantScope } from '@/composables/useTenantScope'
 import type { Incident } from '@/types/domain'
 import { causeLabel } from '@/data/generator'
@@ -139,13 +144,11 @@ const kpis = computed(() => {
     filterSite.value !== 'all'
       ? scopedRobots.value.filter((r) => r.siteId === filterSite.value).length
       : scopedRobots.value.length
-  const plannedRobotHours = fleet * 8 * 30
-  // Техническая доступность = 1 − технедоступность / плановые часы.
-  const techAvailability =
-    plannedRobotHours > 0 ? 100 - (techSec / 3600 / plannedRobotHours) * 100 : 100
-  // Операционная доступность мощности = 1 − влияние / плановые часы.
-  const powerAvailability =
-    plannedRobotHours > 0 ? 100 - (impactSec / 3600 / plannedRobotHours) * 100 : 100
+  const plannedRobotHours = plannedRobotHoursOf(fleet)
+  // Техническая доступность = 1 − технедоступность / плановые часы (metrics.ts).
+  const techAvailability = techAvailabilityPct(selectionDowntimes.value, fleet)
+  // Операционная доступность мощности = 1 − влияние / плановые часы (metrics.ts).
+  const powerAvailability = powerAvailabilityPct(selectionDowntimes.value, fleet)
   // Стоимость ремонта: труд + запчасти + услуги по завершённым работам (§9.2).
   const doneWorks = scopedMaintenance.value.filter(
     (m) =>
@@ -227,6 +230,14 @@ const causeRows = computed<CauseRow[]>(() => {
     row.loss += d.lossRubles
     byCause.set(code, row)
   }
+  // Уникальные сущности — из того же набора строк, что и таблица детализации
+  // (ACC-011): шапка и строки считаются из одного источника.
+  for (const row of byCause.values()) {
+    const incs = selection.value.filter((i) => (i.causeCode ?? 'CA-060') === row.code)
+    row.robots = new Set(incs.map((i) => i.robotId)).size
+    row.sitesCount = new Set(incs.map((i) => i.siteId)).size
+    row.zonesCount = new Set(incs.map((i) => i.zoneName).filter(Boolean)).size
+  }
   const rows = [...byCause.values()].sort((a, b) => b.loss - a.loss)
   for (const r of rows) r.share = total > 0 ? (r.loss / total) * 100 : 0
   return rows
@@ -281,6 +292,11 @@ const zoneLossRows = computed(() => {
 })
 
 const siteChartLabels = computed(() => siteLossRows.value.map((r) => r.name))
+
+/** Карточка потерь объекта → реестр простоев этого объекта (ACC-013). */
+function goSiteLosses(siteId: string): void {
+  router.push({ name: 'downtimes', query: { site: siteId } })
+}
 const siteZoneDatasets = computed(() => {
   const zones = [...new Set(zoneLossRows.value.map((r) => r.zone))]
   return zones.map((zone) => ({
@@ -536,7 +552,12 @@ function exportBreakdownCsv(): void {
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Техническая доступность</p>
           <p class="text-2xl font-bold tabular-nums text-success">
-            {{ kpis.techAvailability.toFixed(2) }}%
+            {{
+              kpis.techAvailability.toLocaleString('ru-RU', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })
+            }}%
           </p>
           <p class="text-xs text-muted-foreground mt-0.5">
             1 − {{ kpis.techHours.toFixed(1) }} ч /
@@ -549,7 +570,12 @@ function exportBreakdownCsv(): void {
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Операционная доступность мощности</p>
           <p class="text-2xl font-bold tabular-nums text-success">
-            {{ kpis.powerAvailability.toFixed(2) }}%
+            {{
+              kpis.powerAvailability.toLocaleString('ru-RU', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })
+            }}%
           </p>
           <p class="text-xs text-muted-foreground mt-0.5">
             влияние {{ kpis.impactHours.toFixed(1) }} ч · недоступность
@@ -564,7 +590,7 @@ function exportBreakdownCsv(): void {
             {{ kpis.confirmedLoss.toLocaleString('ru-RU') }} ₽
           </p>
           <p class="text-xs text-muted-foreground mt-0.5">
-            {{ kpis.impactIntervals }} интервалов влияния × ставка объекта
+            {{ kpis.impactIntervals }} влияния × ставка объекта
           </p>
         </CardContent>
       </Card>
@@ -737,12 +763,16 @@ function exportBreakdownCsv(): void {
             <div
               v-for="row in siteLossRows"
               :key="row.siteId"
-              class="border border-border rounded-lg p-3"
+              class="border border-border rounded-lg p-3 cursor-pointer hover:border-primary/50 transition-colors"
+              role="button"
+              tabindex="0"
+              @click="goSiteLosses(row.siteId)"
+              @keydown.enter="goSiteLosses(row.siteId)"
             >
               <p class="font-medium text-sm">{{ row.name }}</p>
               <p class="text-lg font-bold tabular-nums">{{ row.loss.toLocaleString('ru-RU') }} ₽</p>
               <p class="text-xs text-muted-foreground">
-                {{ row.hours.toFixed(1) }} ч · {{ row.zones }} зон
+                {{ row.hours.toFixed(1) }} ч · {{ row.zones }} зон · открыть расшифровку
               </p>
             </div>
           </div>
@@ -796,7 +826,7 @@ function exportBreakdownCsv(): void {
             </div>
             <div>
               <p class="text-lg font-bold tabular-nums">{{ rtStats.reaction.p90 }}</p>
-              <p class="text-xs text-muted-foreground">p90</p>
+              <p class="text-xs text-muted-foreground">90-й перцентиль</p>
             </div>
             <div>
               <p class="text-lg font-bold tabular-nums">{{ rtStats.reaction.n }}</p>
@@ -817,7 +847,7 @@ function exportBreakdownCsv(): void {
             </div>
             <div>
               <p class="text-lg font-bold tabular-nums">{{ rtStats.recovery.p90 }}</p>
-              <p class="text-xs text-muted-foreground">p90</p>
+              <p class="text-xs text-muted-foreground">90-й перцентиль</p>
             </div>
             <div>
               <p class="text-lg font-bold tabular-nums">{{ rtStats.recovery.n }}</p>
@@ -877,7 +907,7 @@ function exportBreakdownCsv(): void {
                 <TableHead class="py-2 px-4">Объект · зона</TableHead>
                 <TableHead class="py-2 px-4">Робот</TableHead>
                 <TableHead class="py-2 px-4">Причина</TableHead>
-                <TableHead class="py-2 px-4">Интервал</TableHead>
+                <TableHead class="py-2 px-4">Простой</TableHead>
                 <TableHead class="py-2 px-4">Часы</TableHead>
                 <TableHead class="py-2 px-4">Ставка</TableHead>
                 <TableHead class="py-2 px-4">Сумма</TableHead>

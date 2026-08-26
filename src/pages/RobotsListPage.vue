@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useDemoData } from '@/composables/useDemoData'
+import { PLANNED_HOURS_PER_ROBOT } from '@/data/metrics'
 import { useTenantScope } from '@/composables/useTenantScope'
 import { useRouter } from 'vue-router'
 const router = useRouter()
@@ -68,28 +69,29 @@ const STATUS_RU: Record<string, string> = {
   DISABLED: 'Отключён',
 }
 
-// Availability: 1 - confirmed downtime / (30 days * 24h) per robot
-const ROBOT_FUND_H = 30 * 24
-
-const robotMetrics = computed(() => {
-  const map = new Map<string, { incCount: number; dtSeconds: number; loss: number }>()
-  for (const r of robots.value) map.set(r.id, { incCount: 0, dtSeconds: 0, loss: 0 })
-  for (const inc of incidents.value) {
-    if (!inc.robotId) continue
-    const e = map.get(inc.robotId)
-    if (e) {
-      e.incCount++
-      e.dtSeconds += inc.downtimeSeconds
-      e.loss += inc.lossRubles
+// Единые метрики (ACC-023): доступность — только через src/data/metrics.
+const robotMetricsMap = computed(() => {
+  const map = new Map<string, { incCount: number; loss: number; tech: number; impact: number }>()
+  for (const r of robots.value) map.set(r.id, { incCount: 0, loss: 0, tech: 0, impact: 0 })
+  for (const d of downtimes.value) {
+    if (!d.robotId) continue
+    const e = map.get(d.robotId)
+    if (!e || !(d.confirmationStatus === 'CONFIRMED' || d.confirmationStatus === 'ADJUSTED'))
+      continue
+    if (d.intervalType === 'TECHNICAL_UNAVAILABLE') e.tech += d.accountableDurationSeconds
+    if (d.intervalType === 'OPERATIONAL_IMPACT') {
+      e.impact += d.accountableDurationSeconds
+      e.loss += d.lossRubles
     }
   }
   return map
 })
 
+/** Техническая доступность робота за 30 дней (единая формула metrics.ts). */
 function availability(robotId: string): number {
-  const m = robotMetrics.value.get(robotId)
-  if (!m || ROBOT_FUND_H === 0) return 100
-  return Math.max(0, 100 - (m.dtSeconds / 3600 / ROBOT_FUND_H) * 100)
+  const m = robotMetricsMap.value.get(robotId)
+  if (!m) return 100
+  return Math.max(0, 100 - (m.tech / 3600 / PLANNED_HOURS_PER_ROBOT) * 100)
 }
 
 const filteredRobots = computed(() => {
@@ -251,13 +253,22 @@ function availClass(v: number): string {
                 {{ availability(robot.id).toFixed(1) }}%
               </TableCell>
               <TableCell class="text-sm tabular-nums py-3 px-4">{{
-                robotMetrics.get(robot.id)?.incCount ?? 0
+                robotMetricsMap.get(robot.id)?.incCount ?? 0
               }}</TableCell>
               <TableCell class="text-sm tabular-nums py-3 px-4"
-                >{{ ((robotMetrics.get(robot.id)?.dtSeconds ?? 0) / 3600).toFixed(1) }} ч</TableCell
+                >{{
+                  (
+                    (robotMetricsMap.get(robot.id)?.impact ?? 0) / 3600 +
+                    (robotMetricsMap.get(robot.id)?.tech ?? 0) / 3600
+                  ).toFixed(1)
+                }}
+                ч</TableCell
               >
               <TableCell class="text-sm font-medium tabular-nums py-3 px-4 text-destructive"
-                >{{ (robotMetrics.get(robot.id)?.loss ?? 0).toLocaleString('ru-RU') }} ₽</TableCell
+                >{{
+                  (robotMetricsMap.get(robot.id)?.loss ?? 0).toLocaleString('ru-RU')
+                }}
+                ₽</TableCell
               >
             </TableRow>
           </TableBody>

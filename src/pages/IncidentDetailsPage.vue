@@ -58,10 +58,10 @@ const {
   robots,
   substitutions,
   assignCoordinator,
-  confirmSafety,
   assignSubstitution,
   engageBackup,
   returnRobotToPark,
+  returnGate,
   incidentProcessState,
   availableBackups,
   addObservation,
@@ -74,6 +74,7 @@ const {
   reopenIncident,
   readyToClose,
   nextStep,
+  incidentClock,
 } = useDemoData()
 
 const incidentId = computed(() => String(route.params.incidentId ?? ''))
@@ -135,18 +136,11 @@ const availableBackupsList = computed(() =>
   incident.value ? availableBackups(incident.value.siteId) : [],
 )
 
-const showSafety = ref(false)
 const showSubstitution = ref(false)
-const safetyComment = ref('')
 const subBackupId = ref('')
 const subError = ref<string | null>(null)
-
-function submitSafety(): void {
-  if (!incident.value) return
-  confirmSafety(incident.value.id, safetyComment.value.trim(), actorName.value)
-  safetyComment.value = ''
-  showSafety.value = false
-}
+/** Ошибка последнего действия (permission-гард/гейт стора — ACC-001/006). */
+const actionError = ref<string | null>(null)
 
 function submitSubstitution(): void {
   if (!incident.value || !subBackupId.value) return
@@ -162,12 +156,19 @@ function submitSubstitution(): void {
 
 function submitEngage(): void {
   if (!incident.value) return
-  engageBackup(incident.value.id, actorName.value)
+  const res = engageBackup(incident.value.id, actorName.value)
+  actionError.value = res.ok ? null : (res.reason ?? null)
 }
+
+/** Гейт возврата (ACC-001): незавершённые шаги для подсказки в UI. */
+const returnCheck = computed(() =>
+  incident.value ? returnGate(incident.value.id) : { ok: false, unmet: [] as string[] },
+)
 
 function submitReturn(): void {
   if (!incident.value) return
-  returnRobotToPark(incident.value.id, actorName.value)
+  const res = returnRobotToPark(incident.value.id, actorName.value)
+  actionError.value = res.ok ? null : (res.reason ?? null)
 }
 
 function siteName(id: string): string {
@@ -231,7 +232,7 @@ const causeMaturityTarget = ref<'PRIMARY' | 'REFINED' | 'FINAL'>('PRIMARY')
 
 function submitCause(): void {
   if (!incident.value || !causeCode.value || !causeComment.value.trim()) return
-  classifyCause(
+  const res = classifyCause(
     incident.value.id,
     causeCode.value,
     causeComment.value.trim(),
@@ -242,25 +243,29 @@ function submitCause(): void {
       .map((s) => s.trim())
       .filter(Boolean),
   )
-  showCause.value = false
+  if (res.ok) showCause.value = false
+  else actionError.value = res.reason ?? null
 }
 
 function submitAssign(): void {
   if (!incident.value) return
-  assignCoordinator(incident.value.id, actorName.value)
-  showAssign.value = false
+  const res = assignCoordinator(incident.value.id, actorName.value)
+  if (res.ok) showAssign.value = false
+  else actionError.value = res.reason ?? null
 }
 
 function submitObservation(): void {
   if (!incident.value || !obsText.value.trim()) return
-  addObservation(incident.value.id, obsText.value.trim(), actorName.value)
-  obsText.value = ''
-  showObservation.value = false
+  const res = addObservation(incident.value.id, obsText.value.trim(), actorName.value)
+  if (res.ok) {
+    obsText.value = ''
+    showObservation.value = false
+  } else actionError.value = res.reason ?? null
 }
 
 function submitAction(): void {
   if (!incident.value || !actName.value.trim() || !actExecutor.value.trim()) return
-  createServiceAction({
+  const res = createServiceAction({
     incidentId: incident.value.id,
     actionTypeName: actName.value.trim(),
     description: actDesc.value.trim() || actName.value.trim(),
@@ -270,11 +275,13 @@ function submitAction(): void {
       : new Date(Date.now() + 86400000).toISOString(),
     actorName: actorName.value,
   })
-  actName.value = ''
-  actDesc.value = ''
-  actExecutor.value = ''
-  actDue.value = ''
-  showAction.value = false
+  if (res.ok) {
+    actName.value = ''
+    actDesc.value = ''
+    actExecutor.value = ''
+    actDue.value = ''
+    showAction.value = false
+  } else actionError.value = res.reason ?? null
 }
 
 function openComplete(actionId: string): void {
@@ -286,39 +293,44 @@ function openComplete(actionId: string): void {
 
 function submitComplete(): void {
   if (!completeComment.value.trim()) return
-  completeAction(
+  const res = completeAction(
     completeActionId.value,
     completeResult.value,
     completeComment.value.trim(),
     actorName.value,
   )
-  showComplete.value = false
+  if (res.ok) showComplete.value = false
+  else actionError.value = res.reason ?? null
 }
 
 function submitRecovery(): void {
   if (!incident.value) return
-  confirmRecovery(
+  const res = confirmRecovery(
     incident.value.id,
     recoveryBasis.value,
     recoveryComment.value.trim() || '—',
     actorName.value,
   )
-  recoveryComment.value = ''
-  showRecovery.value = false
+  if (res.ok) {
+    recoveryComment.value = ''
+    showRecovery.value = false
+  } else actionError.value = res.reason ?? null
 }
 
 function submitDowntime(): void {
   if (!incident.value) return
-  decideDowntime(incident.value.id, dtDecision.value, actorName.value, {
+  const res = decideDowntime(incident.value.id, dtDecision.value, actorName.value, {
     adjustedSeconds:
       dtDecision.value === 'ADJUST' && dtAdjustMinutes.value
         ? dtAdjustMinutes.value * 60
         : undefined,
     comment: dtComment.value.trim() || undefined,
   })
-  dtComment.value = ''
-  dtAdjustMinutes.value = null
-  showDowntime.value = false
+  if (res.ok) {
+    dtComment.value = ''
+    dtAdjustMinutes.value = null
+    showDowntime.value = false
+  } else actionError.value = res.reason ?? null
 }
 
 function submitClose(): void {
@@ -333,9 +345,11 @@ function submitClose(): void {
 
 function submitReopen(): void {
   if (!incident.value || !reopenReason.value.trim()) return
-  reopenIncident(incident.value.id, reopenReason.value.trim(), actorName.value)
-  reopenReason.value = ''
-  showReopen.value = false
+  const res = reopenIncident(incident.value.id, reopenReason.value.trim(), actorName.value)
+  if (res.ok) {
+    reopenReason.value = ''
+    showReopen.value = false
+  } else actionError.value = res.reason ?? null
 }
 
 const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
@@ -444,16 +458,14 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
             >
               Назначить координатора
             </Button>
-            <Button size="sm" variant="outline" class="min-h-9" @click="showObservation = true">
-              Добавить наблюдение
-            </Button>
             <Button
-              v-if="!incident.safetyConfirmedAt"
+              v-if="auth.can('events.create')"
               size="sm"
+              variant="outline"
               class="min-h-9"
-              @click="showSafety = true"
+              @click="showObservation = true"
             >
-              Обеспечить безопасность
+              Добавить наблюдение
             </Button>
             <Button
               v-if="
@@ -466,7 +478,7 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
               Назначить резерв
             </Button>
             <Button
-              v-if="substitution && !substitution.engagedAt"
+              v-if="substitution && !substitution.engagedAt && auth.can('substitutions.confirm')"
               size="sm"
               class="min-h-9"
               @click="submitEngage"
@@ -478,6 +490,8 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
               size="sm"
               variant="outline"
               class="min-h-9"
+              :disabled="!returnCheck.ok"
+              :title="returnCheck.ok ? '' : returnCheck.unmet.join('; ')"
               @click="submitReturn"
             >
               Вернуть робота в парк
@@ -557,6 +571,17 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
             </Button>
           </div>
         </div>
+        <p v-if="actionError" class="text-xs text-destructive">
+          Действие недоступно: {{ actionError }}
+        </p>
+        <p
+          v-else-if="
+            processState.technicallyOpen && processState.processRestored && !returnCheck.ok
+          "
+          class="text-xs text-muted-foreground"
+        >
+          Возврат робота в парк недоступен, пока не завершены: {{ returnCheck.unmet.join('; ') }}.
+        </p>
         <p v-if="closeError" class="text-xs text-destructive">
           Закрытие невозможно: {{ closeError }}
         </p>
@@ -858,7 +883,11 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
                       fmtDur(
                         Math.max(
                           0,
-                          Math.round((Date.now() - Date.parse(incidentDowntime.startedAt)) / 1000),
+                          Math.round(
+                            (Date.parse(incidentClock(incident.id)) -
+                              Date.parse(incidentDowntime.startedAt)) /
+                              1000,
+                          ),
                         ),
                       )
                     }}</template
@@ -896,7 +925,7 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
                 v-else-if="incidentDowntime.intervalState === 'OPEN'"
                 class="text-xs text-muted-foreground"
               >
-                Потери рассчитываются после подтверждения интервала.
+                Потери рассчитываются после подтверждения простоя.
               </div>
             </div>
           </CardContent></Card
@@ -1037,31 +1066,6 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
         >
       </TabsContent>
     </Tabs>
-
-    <!-- Диалог: обеспечить безопасность (ТЗ v2.0 §6 шаг 4) -->
-    <Dialog :open="showSafety" @update:open="(v) => (showSafety = v)">
-      <DialogContent class="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Обеспечить безопасность зоны</DialogTitle>
-          <DialogDescription>
-            Зафиксировать ограждение зоны и вывод робота с критического пути. Запись появится в
-            истории с вашим именем.
-          </DialogDescription>
-        </DialogHeader>
-        <div class="space-y-2">
-          <Label for="safety-comment">Что сделано</Label>
-          <Textarea
-            id="safety-comment"
-            v-model="safetyComment"
-            placeholder="Например: зона C-12 ограждена, робот эвакуирован погрузчиком на сервисную стоянку"
-          />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" @click="showSafety = false">Отмена</Button>
-          <Button @click="submitSafety">Подтвердить безопасность</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
 
     <!-- Диалог: назначить резерв (ТЗ v2.0 §6 шаг 5) -->
     <Dialog :open="showSubstitution" @update:open="(v) => (showSubstitution = v)">
@@ -1312,7 +1316,7 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
         <DialogHeader>
           <DialogTitle>Подтверждение восстановления</DialogTitle>
           <DialogDescription>
-            Открытый интервал простоя закроется этим моментом (авто).
+            Открытый простой с влиянием на процесс закроется этим моментом (авто).
           </DialogDescription>
         </DialogHeader>
         <div class="space-y-3">
@@ -1347,9 +1351,9 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
     <Dialog :open="showDowntime" @update:open="(v) => (showDowntime = v)">
       <DialogContent class="max-w-md">
         <DialogHeader>
-          <DialogTitle>Решение по интервалу простоя</DialogTitle>
+          <DialogTitle>Решение по простою с влиянием на процесс</DialogTitle>
           <DialogDescription>
-            Подтверждение открытого интервала фиксирует окончание текущим моментом; корректировка
+            Подтверждение открытого простоя фиксирует окончание текущим моментом; корректировка
             меняет учётную длительность и пересчитывает потери.
           </DialogDescription>
         </DialogHeader>
@@ -1378,7 +1382,7 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
               aria-describedby="dt-min-hint"
             />
             <p id="dt-min-hint" class="text-xs text-muted-foreground">
-              Целое число минут: скорректированная учётная длительность интервала.
+              Целое число минут: скорректированная учётная длительность простоя.
             </p>
           </div>
           <div class="space-y-1.5">

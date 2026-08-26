@@ -5,7 +5,7 @@ test('D: downtimes register — filters, quick views, summary matches rows', asy
   await page.locator('button', { hasText: 'Администратор' }).first().click()
   await page.waitForURL('http://localhost:5180/', { timeout: 10_000 })
   await page.goto('http://localhost:5180/downtimes')
-  await expect(page.getByText('Интервалов:').first()).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByText('Записей:').first()).toBeVisible({ timeout: 10_000 })
 
   // русские статусы (нет сырых CONFIRMED как основного текста бейджа)
   await expect(page.getByText('Подтверждён').first()).toBeVisible()

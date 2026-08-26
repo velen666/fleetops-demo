@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useDemoData } from '@/composables/useDemoData'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -30,6 +31,31 @@ export const router = createRouter({
             icon: 'MapPin',
             sidebarOrder: 5,
             requiredRole: 'SITE_MANAGER',
+          },
+        },
+        {
+          // Портфель роботизации (Отчёт §10.4): главная руководителя эксплуатации.
+          path: 'portfolio',
+          name: 'portfolio',
+          component: () => import('@/pages/PortfolioPage.vue'),
+          meta: {
+            title: 'Портфель роботизации',
+            icon: 'LayoutDashboard',
+            sidebarOrder: 8,
+            requiredRoles: ['SYSTEM_ADMIN', 'FLEET_OPERATIONS_MANAGER', 'SERVICE_MANAGER'],
+          },
+        },
+        {
+          // Экономика эксплуатации (Отчёт §10.5): главная финансово-операционного
+          // директора; только подтверждённые потери с расшифровкой.
+          path: 'finance',
+          name: 'finance-home',
+          component: () => import('@/pages/FinanceHomePage.vue'),
+          meta: {
+            title: 'Экономика эксплуатации',
+            icon: 'TrendingDown',
+            sidebarOrder: 8,
+            requiredRoles: ['OPERATIONS_DIRECTOR', 'FINANCE_MANAGER', 'SYSTEM_ADMIN'],
           },
         },
         {
@@ -153,6 +179,40 @@ router.beforeEach((to) => {
   if (auth.activeRoleCode === 'SITE_MANAGER' && (to.name === 'overview' || to.path === '/')) {
     return { name: 'my-site' }
   }
+  // Рабочая точка входа сервисного инженера (ACC-005/019): очередь «мои работы».
+  if (auth.activeRoleCode === 'SERVICE_ENGINEER' && (to.name === 'overview' || to.path === '/')) {
+    return { name: 'maintenance' }
+  }
+  // Ролевые главные страницы (ACC-022): руководитель эксплуатации — портфель;
+  // финансово-операционный директор — подтверждённые потери.
+  if (to.name === 'overview' || to.path === '/') {
+    if (['FLEET_OPERATIONS_MANAGER', 'SERVICE_MANAGER'].includes(auth.activeRoleCode ?? '')) {
+      return { name: 'portfolio' }
+    }
+    if (['OPERATIONS_DIRECTOR', 'FINANCE_MANAGER'].includes(auth.activeRoleCode ?? '')) {
+      return { name: 'finance-home' }
+    }
+  }
+  // Объектовая область на deep-link карточках (ACC-007): сущность вне
+  // разрешённых объектов недоступна даже по прямому URL.
+  const scopedRoutes = new Set([
+    'incident-details',
+    'robot-details',
+    'site-details',
+    'zone-details',
+  ])
+  if (auth.isAuthenticated && scopedRoutes.has(String(to.name))) {
+    const { incidents, robots } = useDemoData()
+    let siteId: string | null = null
+    if (to.name === 'incident-details')
+      siteId = incidents.value.find((i) => i.id === to.params.incidentId)?.siteId ?? null
+    else if (to.name === 'robot-details')
+      siteId = robots.value.find((r) => r.id === to.params.robotId)?.siteId ?? null
+    else siteId = String(to.params.siteId ?? '')
+    if (siteId && !auth.isSiteAllowed(siteId)) {
+      return { name: auth.activeRoleCode === 'SITE_MANAGER' ? 'my-site' : 'overview' }
+    }
+  }
   // RBAC: проверка прав при прямом URL
   if (
     to.meta.requiredPermission &&
@@ -164,5 +224,12 @@ router.beforeEach((to) => {
   // Ролевой экран: «Мой объект» доступен только начальнику склада.
   if (to.meta.requiredRole && auth.activeRoleCode !== to.meta.requiredRole) {
     return { name: 'overview' }
+  }
+  // Ролевые экраны (портфель/экономика): только владельцам ролей.
+  if (to.meta.requiredRoles && auth.isAuthenticated) {
+    const roles = to.meta.requiredRoles as string[]
+    if (!auth.activeRoleCode || !roles.includes(auth.activeRoleCode)) {
+      return { name: 'overview' }
+    }
   }
 })

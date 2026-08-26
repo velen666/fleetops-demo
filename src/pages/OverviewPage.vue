@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { computed } from 'vue'
 import { useDemoData } from '@/composables/useDemoData'
 import { useTenantScope } from '@/composables/useTenantScope'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -54,31 +54,12 @@ const siteRows = computed(() =>
     .sort((a, b) => b.loss - a.loss),
 )
 
-// Live dashboard
-const liveOffset = ref({ downtimeSeconds: 0, lossRubles: 0 })
-let liveTimer: ReturnType<typeof setInterval> | null = null
-
-onMounted(() => {
-  liveTimer = setInterval(() => {
-    const extraSeconds = Math.floor(Math.random() * 120) + 30
-    const extraLoss = Math.round((extraSeconds / 3600) * 55000)
-    liveOffset.value.downtimeSeconds += extraSeconds
-    liveOffset.value.lossRubles += extraLoss
-  }, 12000)
-})
-onUnmounted(() => {
-  if (liveTimer) clearInterval(liveTimer)
-})
-
-const liveAvailability = computed(() => {
-  const base = stats.value.availability
-  const extraImpact = (liveOffset.value.downtimeSeconds / (30 * 24 * 3600)) * 100
-  return Math.max(0, base - extraImpact)
-})
-const liveDowntimeHours = computed(() =>
-  ((stats.value.totalDowntimeSeconds + liveOffset.value.downtimeSeconds) / 3600).toFixed(1),
-)
-const liveLoss = computed(() => stats.value.totalLoss + liveOffset.value.lossRubles)
+// KPI считаются только из подтверждённых данных единой модели (ACC-032):
+// псевдо-живой дрейф и случайные прибавки удалены — цифры воспроизводимы и
+// совпадают с реестрами/аналитикой.
+const liveAvailability = computed(() => stats.value.availability)
+const liveDowntimeHours = computed(() => stats.value.totalDowntimeHours)
+const liveLoss = computed(() => stats.value.totalLoss)
 
 // Top problems with full context
 const topProblemsDetailed = computed(() => {

@@ -5,6 +5,10 @@ import { fileURLToPath, URL } from 'node:url'
 
 export default defineConfig({
   plugins: [vue(), tailwindcss()],
+  test: {
+    // юнит-уровень: только src; e2e-спеки исполняет Playwright (`npx playwright test`)
+    include: ['src/**/*.test.ts'],
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

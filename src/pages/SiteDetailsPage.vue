@@ -2,6 +2,12 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDemoData } from '@/composables/useDemoData'
+import {
+  confirmedLossRubles,
+  impactSeconds,
+  techAvailabilityPct,
+  techUnavailableSeconds,
+} from '@/data/metrics'
 import { causeLabel } from '@/data/generator'
 import { SOURCE_INSTANCES } from '@/data/generator'
 import {
@@ -126,24 +132,22 @@ function goZone(code: string): void {
 }
 
 const metrics = computed(() => {
-  const confirmed = siteDowntimes.value.filter(
-    (d) => d.confirmationStatus === 'CONFIRMED' || d.confirmationStatus === 'ADJUSTED',
-  )
-  const dtSec = confirmed.reduce((s, d) => s + d.accountableDurationSeconds, 0)
-  const fund = siteRobots.value.length * 30 * 24
+  // Единые метрики (ACC-023/016): раздельно влияние/недоступность/деньги.
+  const fleet = siteRobots.value.length
   const byCause = new Map<string, number>()
   for (const i of siteIncidents.value) {
     if (i.causeCode) byCause.set(i.causeCode, (byCause.get(i.causeCode) ?? 0) + 1)
   }
   return {
-    fleet: siteRobots.value.length,
+    fleet,
     active: siteRobots.value.filter((r) => r.status === 'ACTIVE').length,
     onService: siteRobots.value.filter((r) => r.status === 'MAINTENANCE').length,
     incidents: siteIncidents.value.length,
     activeIncidents: siteIncidents.value.filter((i) => i.status !== 'CLOSED').length,
-    hours: dtSec / 3600,
-    loss: confirmed.reduce((s, d) => s + d.lossRubles, 0),
-    availability: fund > 0 ? 100 - (dtSec / 3600 / fund) * 100 : 100,
+    impactHours: impactSeconds(siteDowntimes.value) / 3600,
+    techHours: techUnavailableSeconds(siteDowntimes.value) / 3600,
+    loss: confirmedLossRubles(siteDowntimes.value),
+    techAvailability: techAvailabilityPct(siteDowntimes.value, fleet),
     topCauses: [...byCause.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3),
   }
 })
@@ -194,15 +198,16 @@ function goRobotsFiltered(): void {
             </p>
           </div>
           <div>
-            <p class="text-xs text-muted-foreground">Доступность</p>
+            <p class="text-xs text-muted-foreground">Техническая доступность</p>
             <p class="text-lg font-bold tabular-nums text-success">
-              {{ metrics.availability.toFixed(1) }}%
+              {{ metrics.techAvailability.toFixed(1) }}%
             </p>
           </div>
           <div>
-            <p class="text-xs text-muted-foreground">Простой / потери</p>
+            <p class="text-xs text-muted-foreground">Влияние / недоступность / потери</p>
             <p class="text-lg font-bold tabular-nums">
-              {{ metrics.hours.toFixed(1) }} ч · {{ metrics.loss.toLocaleString('ru-RU') }} ₽
+              {{ metrics.impactHours.toFixed(1) }} ч · {{ metrics.techHours.toFixed(1) }} ч ·
+              {{ metrics.loss.toLocaleString('ru-RU') }} ₽
             </p>
           </div>
           <div>
@@ -247,7 +252,7 @@ function goRobotsFiltered(): void {
           <CardHeader
             ><CardTitle>Зоны объекта</CardTitle>
             <p class="text-xs text-muted-foreground">
-              Клик по зоне — страница зоны (мощность, роботы, инциденты, интервалы)
+              Клик по зоне — страница зоны (мощность, роботы, инциденты, простои)
             </p></CardHeader
           >
           <CardContent class="p-0">

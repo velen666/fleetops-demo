@@ -218,8 +218,6 @@ const impactLoss = computed(() =>
     .reduce((s, d) => s + d.lossRubles, 0),
 )
 
-const updatedAgo = '09:15'
-
 function fmtMoney(n: number): string {
   return n.toLocaleString('ru-RU')
 }
@@ -234,7 +232,7 @@ function fmtMoney(n: number): string {
         <div>
           <h1 class="text-xl font-semibold">{{ site?.name ?? 'Объект' }}</h1>
           <p class="text-sm text-muted-foreground">
-            Период: 30 дней · Обновлено {{ updatedAgo }} · Ставка потерь
+            Период: 30 дней · Ставка потерь
             {{ fmtMoney(site?.ratePerHour ?? 0) }} ₽/ч
           </p>
         </div>
@@ -501,7 +499,7 @@ function fmtMoney(n: number): string {
           <div class="rounded-lg bg-muted/50 p-3">
             <p
               class="text-xs text-muted-foreground"
-              title="Сумма подтверждённых интервалов операционного влияния объекта. Период: 30 дней."
+              title="Сумма подтверждённого операционного влияния на процесс объекта. Период: 30 дней."
             >
               Подтверждённое операционное влияние
             </p>

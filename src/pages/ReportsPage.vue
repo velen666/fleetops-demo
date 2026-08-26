@@ -30,35 +30,52 @@ import { Download } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useRouter } from 'vue-router'
 import { incidentTypeLabel, causeLabel, CAUSE_CATALOG } from '@/data/generator'
+import { useTenantScope } from '@/composables/useTenantScope'
+import { impactSeconds, techAvailabilityPct, techUnavailableSeconds } from '@/data/metrics'
 
 const { incidents, downtimes, analytics, robots, sites, costRates } = useDemoData()
 const auth = useAuthStore()
 const router = useRouter()
 
+// Объектовая область роли (ACC-007): отчёты ограничены разрешёнными объектами.
+const scope = useTenantScope()
+const scopedSiteIds = computed(() => scope.sites(sites.value).value.map((s) => s.id))
+
 /** Строки расшифровки диалога: инциденты с подтверждёнными потерями, по убыванию суммы. */
 const breakdownRows = computed(() =>
-  incidents.value.filter((i) => i.lossRubles > 0).sort((a, b) => b.lossRubles - a.lossRubles),
+  incidents.value
+    .filter((i) => i.lossRubles > 0 && scopedSiteIds.value.includes(i.siteId))
+    .sort((a, b) => b.lossRubles - a.lossRubles),
 )
 
 const selectedSite = ref('all')
 const showBreakdown = ref(false)
 const breakdownTitle = ref('')
 
+/** Объекты, доступные роли: пересечение tenant-scope и ручного выбора. */
+const availableSites = computed(() => scope.sites(sites.value).value)
+
 const siteName = computed(() =>
   selectedSite.value === 'all'
-    ? 'Все объекты'
+    ? scope.scoped.value
+      ? 'Объекты моей зоны ответственности'
+      : 'Все объекты'
     : (sites.value.find((s) => s.id === selectedSite.value)?.name ?? ''),
 )
 
 const filteredIncidents = computed(() =>
-  selectedSite.value === 'all'
-    ? incidents.value
-    : incidents.value.filter((i) => i.siteId === selectedSite.value),
+  incidents.value.filter(
+    (i) =>
+      scopedSiteIds.value.includes(i.siteId) &&
+      (selectedSite.value === 'all' || i.siteId === selectedSite.value),
+  ),
 )
 const filteredDowntimes = computed(() =>
-  selectedSite.value === 'all'
-    ? downtimes.value
-    : downtimes.value.filter((d) => d.siteId === selectedSite.value),
+  downtimes.value.filter(
+    (d) =>
+      scopedSiteIds.value.includes(d.siteId) &&
+      (selectedSite.value === 'all' || d.siteId === selectedSite.value),
+  ),
 )
 
 const filteredStats = computed(() => {
@@ -100,6 +117,7 @@ const robotStats = computed(() => {
     { name: string; model: string; site: string; count: number; downtime: number; loss: number }
   >()
   for (const r of robots.value) {
+    if (!scopedSiteIds.value.includes(r.siteId)) continue
     if (selectedSite.value !== 'all' && r.siteId !== selectedSite.value) continue
     map.set(r.id, {
       name: r.name,
@@ -123,15 +141,25 @@ const robotStats = computed(() => {
 })
 
 function exportReport(): void {
+  // Единые метрики (ACC-023): доступность — по формуле metrics.ts.
+  const scopedRobotCount = robots.value.filter(
+    (r) =>
+      scopedSiteIds.value.includes(r.siteId) &&
+      (selectedSite.value === 'all' || r.siteId === selectedSite.value),
+  ).length
+  const techAvail = techAvailabilityPct(filteredDowntimes.value, scopedRobotCount)
+  const impactH = impactSeconds(filteredDowntimes.value) / 3600
+  const techH = techUnavailableSeconds(filteredDowntimes.value) / 3600
   const lines = [
     'ZIMA FleetOps — Управленческий отчёт',
     `Период: последние 30 дней | Объект: ${siteName.value}`,
     `Дата формирования: ${new Date().toLocaleString('ru-RU')}`,
     '',
     '=== СВОДКА ===',
-    `Доступность: ${(100 - (filteredStats.value.totalDowntime / (30 * 24 * 3600)) * 100).toFixed(1)}%`,
-    `Простой: ${(filteredStats.value.totalDowntime / 3600).toFixed(1)} ч`,
-    `Потери: ${filteredStats.value.totalLoss.toLocaleString('ru-RU')} ₽`,
+    `Техническая доступность: ${techAvail.toFixed(1)}% (парк ${scopedRobotCount} × 8 ч × 30 дней)`,
+    `Операционное влияние: ${impactH.toFixed(1)} ч`,
+    `Техническая недоступность: ${techH.toFixed(1)} ч`,
+    `Потери процесса: ${filteredStats.value.totalLoss.toLocaleString('ru-RU')} ₽`,
     `Инцидентов: ${filteredStats.value.total} (активных: ${filteredStats.value.active})`,
     `Неклассифицированных: ${filteredStats.value.unclassified} (${filteredStats.value.total > 0 ? ((filteredStats.value.unclassified / filteredStats.value.total) * 100).toFixed(0) : 0}%)`,
     '',
@@ -180,7 +208,9 @@ function openBreakdown(title: string): void {
           <SelectTrigger class="w-[220px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Все объекты</SelectItem>
-            <SelectItem v-for="s in sites" :key="s.id" :value="s.id">{{ s.name }}</SelectItem>
+            <SelectItem v-for="s in availableSites" :key="s.id" :value="s.id">{{
+              s.name
+            }}</SelectItem>
           </SelectContent>
         </Select>
       </div>
