@@ -253,11 +253,12 @@ function fmtMoney(n: number): string {
       </span>
     </div>
 
-    <!-- Ключевые показатели -->
+    <!-- Ключевые показатели (§8.1; title = определение, период) -->
     <div class="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
       <Card
         class="kpi-clickable"
         :class="kpi.deficitZones > 0 ? 'border-destructive/40' : ''"
+        title="Зоны, где работающих меньше требуемой мощности. Период: сейчас."
         @click="router.push(`/sites/${siteId}`)"
       >
         <CardContent class="p-4">
@@ -270,13 +271,21 @@ function fmtMoney(n: number): string {
           </p>
         </CardContent>
       </Card>
-      <Card class="kpi-clickable" @click="router.push(`/sites/${siteId}`)">
+      <Card
+        class="kpi-clickable"
+        title="Роботы в состоянии «Работает в зоне». Период: сейчас."
+        @click="router.push(`/sites/${siteId}`)"
+      >
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Работают</p>
           <p class="text-2xl font-bold tabular-nums text-success">{{ kpi.working }}</p>
         </CardContent>
       </Card>
-      <Card class="kpi-clickable" @click="router.push(`/sites/${siteId}`)">
+      <Card
+        class="kpi-clickable"
+        :title="`Свободный резерв против норматива (${reserveState.norm}). Ниже норматива — риск устойчивости, не потеря.`"
+        @click="router.push(`/sites/${siteId}`)"
+      >
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Резерв</p>
           <p
@@ -287,19 +296,31 @@ function fmtMoney(n: number): string {
           </p>
         </CardContent>
       </Card>
-      <Card class="kpi-clickable" @click="router.push('/robots')">
+      <Card
+        class="kpi-clickable"
+        title="Роботы на зарядке. Период: сейчас."
+        @click="router.push('/robots')"
+      >
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Зарядка</p>
           <p class="text-2xl font-bold tabular-nums">{{ kpi.charging }}</p>
         </CardContent>
       </Card>
-      <Card class="kpi-clickable" @click="router.push('/maintenance')">
+      <Card
+        class="kpi-clickable"
+        title="Диагностика, ожидание ремонта/запчастей, ремонт, аварийная остановка. Период: сейчас."
+        @click="router.push('/maintenance')"
+      >
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Сервис / авария</p>
           <p class="text-2xl font-bold tabular-nums text-warning">{{ kpi.service }}</p>
         </CardContent>
       </Card>
-      <Card class="kpi-clickable" @click="router.push('/incidents')">
+      <Card
+        class="kpi-clickable"
+        title="Незакрытые инциденты объекта. Период: 30 дней."
+        @click="router.push('/incidents')"
+      >
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Активные инциденты</p>
           <p
@@ -478,11 +499,21 @@ function fmtMoney(n: number): string {
       <CardContent>
         <div class="mb-4 grid grid-cols-2 gap-3">
           <div class="rounded-lg bg-muted/50 p-3">
-            <p class="text-xs text-muted-foreground">Подтверждённое операционное влияние</p>
+            <p
+              class="text-xs text-muted-foreground"
+              title="Сумма подтверждённых интервалов операционного влияния объекта. Период: 30 дней."
+            >
+              Подтверждённое операционное влияние
+            </p>
             <p class="text-xl font-bold tabular-nums">{{ impactHours.toFixed(2) }} ч</p>
           </div>
           <div class="rounded-lg bg-muted/50 p-3">
-            <p class="text-xs text-muted-foreground">Потери процесса</p>
+            <p
+              class="text-xs text-muted-foreground"
+              title="Потери процесса = подтверждённые часы влияния × ставка объекта. Период: 30 дней."
+            >
+              Потери процесса
+            </p>
             <p class="text-xl font-bold tabular-nums text-destructive">
               {{ fmtMoney(impactLoss) }} ₽
             </p>
