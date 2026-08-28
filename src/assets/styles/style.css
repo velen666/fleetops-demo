@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap');
 
 @import 'tailwindcss';
 @import 'tw-animate-css';
@@ -316,6 +316,8 @@
   }
   html {
     font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
   body {
     @apply bg-background text-foreground;
@@ -355,18 +357,127 @@
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  :root {
-    --gradient-surface: var(--card);
+  .app-sidebar,
+  .app-header,
+  .card-glass,
+  .card-decision {
+    background: var(--card);
+  }
+}
+
+/* ── Executive Command Center presentation primitives ─────────────────── */
+.app-shell {
+  background: var(--gradient-hero);
+}
+
+.app-sidebar,
+.app-header {
+  background: color-mix(in oklch, var(--background) 78%, transparent);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+}
+
+.page-hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  border-radius: 1.5rem;
+  background: var(--gradient-hero);
+  box-shadow: var(--shadow-glass);
+  isolation: isolate;
+}
+
+.page-hero::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  content: '';
+  background: var(--gradient-glow);
+  pointer-events: none;
+}
+
+.card-glass,
+.card-decision {
+  border-color: color-mix(in oklch, var(--foreground) 12%, transparent);
+  background: var(--gradient-surface);
+  box-shadow: var(--shadow-glass);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+}
+
+.card-decision {
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in oklch, var(--primary) 14%, var(--card)) 0%,
+      var(--gradient-surface) 58%
+    ),
+    var(--gradient-surface);
+}
+
+.card-data {
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 1.75rem;
+  border: 1px solid color-mix(in oklch, currentColor 35%, transparent);
+  border-radius: 999px;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.eyebrow {
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.button-primary {
+  background-image: var(--gradient-primary);
+  box-shadow:
+    0 8px 24px color-mix(in oklch, var(--primary) 25%, transparent),
+    inset 0 1px 0 color-mix(in oklch, var(--primary-foreground) 18%, transparent);
+}
+
+.button-primary:hover {
+  filter: brightness(1.06);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .card-interactive,
+  .kpi-clickable,
+  .button-primary {
+    transition-property: border-color, box-shadow, color, filter, transform;
+    transition-duration: 160ms;
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
 }
 
 /* ── Interactive card hover effect ─────────────────────────────────────── */
 .card-interactive {
   position: relative;
-  transition:
-    border-color 0.2s ease,
-    box-shadow 0.2s ease,
-    transform 0.15s ease;
 }
 .card-interactive:hover {
   border-color: color-mix(in oklch, var(--primary) 50%, transparent);
@@ -387,9 +498,6 @@
 /* ── KPI card click affordance ────────────────────────────────────────── */
 .kpi-clickable {
   cursor: pointer;
-  transition:
-    border-color 0.2s ease,
-    box-shadow 0.2s ease;
 }
 .kpi-clickable:hover {
   border-color: color-mix(in oklch, var(--primary) 40%, transparent);

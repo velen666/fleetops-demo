@@ -57,6 +57,7 @@
 - [DESIGN.md](DESIGN.md) — обязательный design spec демо (общий с продуктовой темой: glassmorphism dark-first, 4 палитры, 3 уровня токенов в `src/assets/styles/style.css`).
 - Новые компоненты используют только design-токены; hardcoded HEX запрещён. Статусные цвета — только через `--status-*`. Числовые плитки — `tabular-nums`.
 - Glassmorphism (`backdrop-filter`) только для карточек верхнего уровня, хедера, модалок и сайдбара — не для ячеек таблиц и рядов списков.
+- Presentation rule: ролевые главные сначала показывают существующее управленческое решение и его drill-down, затем KPI и доказательные данные. Для этого использовать общие `page-hero` и Card tones; таблицы, строки и form controls остаются матовыми. Palette-aware компоненты, включая Chart.js, читают только semantic CSS tokens.
 
 ## UI Source of Truth
 
