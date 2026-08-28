@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/table'
 import { FLEET_STATE_RU, FLEET_STATE_CLASS, MAINTENANCE_STATUS_RU } from '@/data/labels'
 import { CAUSE_CATALOG, MISSION_STATS } from '@/data/generator'
+import { ruCount } from '@/lib/utils'
 import {
   ArrowRight,
   Bot,
@@ -191,6 +192,13 @@ const operationsPulse = computed(() => {
   }
 })
 
+/** Идентификаторы остаются проверяемыми, но не раздувают строки распределения. */
+function compactRobotIds(items: Array<{ name: string }>): string {
+  const visible = items.slice(0, 3).map((robot) => robot.name)
+  const hidden = items.length - visible.length
+  return hidden > 0 ? `${visible.join(', ')} +${hidden}` : visible.join(', ')
+}
+
 // ─── Сервисный бэклог объекта (§8.6) ──────────────────────────────────────
 
 const backlog = computed(() =>
@@ -265,11 +273,11 @@ function fmtMoney(n: number): string {
 
 <template>
   <div class="space-y-6">
-    <!-- Состояние процесса и следующий drill-down в одном Operations Pulse. -->
+    <!-- Состояние процесса и следующий drill-down в одной оперативной сводке. -->
     <section class="page-hero p-5 sm:p-6">
       <div class="flex flex-wrap items-start justify-between gap-5">
         <div class="max-w-2xl">
-          <p class="eyebrow mb-2">Operations Pulse · 30 дней</p>
+          <p class="eyebrow mb-2">Оперативная сводка · 30 дней</p>
           <h1 class="text-balance text-3xl font-bold tracking-tight">
             {{ site?.name ?? 'Объект' }}
           </h1>
@@ -301,10 +309,24 @@ function fmtMoney(n: number): string {
           </p>
         </div>
         <div class="flex flex-wrap items-center gap-3">
-          <p class="text-xs text-muted-foreground">
-            Резерв {{ operationsPulse.reserve.free }} / {{ operationsPulse.reserve.norm }} · зарядка
-            {{ kpi.charging }} · инцидентов {{ kpi.activeIncidents }}
-          </p>
+          <div>
+            <p class="text-xs text-muted-foreground">Подтверждённое влияние</p>
+            <p class="mt-1 text-sm font-semibold tabular-nums">
+              {{ impactHours.toFixed(1) }} ч ·
+              <span class="text-destructive">{{ fmtMoney(impactLoss) }} ₽</span>
+            </p>
+            <p class="mt-1 text-xs text-muted-foreground">
+              Резерв {{ operationsPulse.reserve.free }} / {{ operationsPulse.reserve.norm }} ·
+              зарядка {{ kpi.charging }} ·
+              {{
+                ruCount(kpi.activeIncidents, [
+                  'активный инцидент',
+                  'активных инцидента',
+                  'активных инцидентов',
+                ])
+              }}
+            </p>
+          </div>
           <Button
             v-if="operationsPulse.attention"
             @click="router.push(operationsPulse.attention.to)"
@@ -391,14 +413,14 @@ function fmtMoney(n: number): string {
       </CardHeader>
       <CardContent>
         <div class="overflow-x-auto">
-          <Table>
+          <Table class="lg:max-2xl:table-fixed">
             <TableHeader>
               <TableRow class="text-left text-muted-foreground">
                 <TableHead>Зона</TableHead>
-                <TableHead>Процесс</TableHead>
+                <TableHead class="lg:max-2xl:hidden">Процесс</TableHead>
                 <TableHead>Мощность</TableHead>
                 <TableHead>Дефицит</TableHead>
-                <TableHead>Инциденты</TableHead>
+                <TableHead class="lg:max-2xl:hidden">Инциденты</TableHead>
                 <TableHead>Потери за период</TableHead>
               </TableRow>
             </TableHeader>
@@ -408,14 +430,16 @@ function fmtMoney(n: number): string {
                   <Button
                     as-child
                     variant="ghost"
-                    class="h-auto min-h-11 w-full justify-start rounded-none px-3 py-2.5 text-left hover:bg-transparent hover:text-primary"
+                    class="h-auto min-h-11 w-full justify-start rounded-none px-3 py-2.5 text-left hover:bg-transparent hover:text-primary lg:whitespace-normal"
                   >
                     <RouterLink :to="zoneRoute(z.code)">
                       {{ z.name }} <ArrowRight class="size-3.5" />
                     </RouterLink>
                   </Button>
                 </TableCell>
-                <TableCell class="text-muted-foreground">{{ z.process }}</TableCell>
+                <TableCell class="text-muted-foreground lg:max-2xl:hidden">{{
+                  z.process
+                }}</TableCell>
                 <TableCell class="tabular-nums">
                   <span :class="z.deficit > 0 ? 'text-destructive font-semibold' : 'text-success'">
                     {{ z.actual }} / {{ z.requiredCapacity }}
@@ -424,7 +448,7 @@ function fmtMoney(n: number): string {
                 <TableCell class="tabular-nums" :class="z.deficit > 0 ? 'text-destructive' : ''">
                   {{ z.deficit > 0 ? `−${z.deficit} ед.` : '—' }}
                 </TableCell>
-                <TableCell class="tabular-nums">
+                <TableCell class="tabular-nums lg:max-2xl:hidden">
                   <span v-if="z.activeIncidents > 0" class="text-destructive"
                     >{{ z.activeIncidents }} активных</span
                   >
@@ -462,8 +486,11 @@ function fmtMoney(n: number): string {
               }}</span>
               <span class="text-right">
                 <span class="font-bold tabular-nums">{{ g.count }}</span>
-                <span class="text-xs text-muted-foreground ml-2">
-                  {{ g.robots.map((r) => r.name).join(', ') }}
+                <span
+                  class="ml-2 max-w-52 truncate text-xs text-muted-foreground"
+                  :title="g.robots.map((robot) => robot.name).join(', ')"
+                >
+                  {{ compactRobotIds(g.robots) }}
                 </span>
               </span>
             </RouterLink>
@@ -529,10 +556,10 @@ function fmtMoney(n: number): string {
               :key="idx"
               as-child
               variant="ghost"
-              class="card-interactive h-auto min-h-11 w-full justify-between rounded-lg border border-border p-3 text-left"
+              class="card-interactive h-auto min-h-11 w-full justify-between rounded-lg border border-border p-3 text-left lg:whitespace-normal"
             >
               <RouterLink :to="a.to" class="flex items-center justify-between gap-3">
-                <span>
+                <span class="min-w-0 text-left">
                   <span class="block text-sm font-medium">{{ a.text }}</span>
                   <span class="block text-xs text-muted-foreground">{{ a.sub }}</span>
                 </span>
@@ -561,19 +588,19 @@ function fmtMoney(n: number): string {
             :key="m.id"
             as-child
             variant="ghost"
-            class="card-interactive h-auto min-h-11 w-full justify-between rounded-lg border border-border p-3 text-left"
+            class="card-interactive h-auto min-h-11 w-full justify-between rounded-lg border border-border p-3 text-left lg:whitespace-normal"
           >
             <RouterLink
               :to="{ name: 'maintenance' }"
               class="flex items-center justify-between gap-3"
             >
-              <span>
+              <span class="min-w-0 text-left">
                 <span class="block text-sm font-medium">{{ m.robotName }} — {{ m.title }}</span>
                 <span class="block text-xs text-muted-foreground">
                   {{ m.problem ?? 'Плановая работа' }} · Исполнитель: {{ m.executor }}
                 </span>
               </span>
-              <span class="flex items-center gap-2">
+              <span class="flex shrink-0 items-center gap-2">
                 <span
                   v-if="m.overdue"
                   class="rounded bg-destructive/15 text-destructive px-2 py-0.5 text-xs font-medium"
@@ -639,7 +666,8 @@ function fmtMoney(n: number): string {
                 <span>
                   <span class="block text-sm font-medium">{{ p.name }}</span>
                   <span class="block text-xs text-muted-foreground">
-                    {{ p.count }} инцидентов · зоны: {{ [...p.zones].join(', ') || '—' }}
+                    {{ ruCount(p.count, ['инцидент', 'инцидента', 'инцидентов']) }} · зоны:
+                    {{ [...p.zones].join(', ') || '—' }}
                   </span>
                 </span>
                 <span class="text-sm font-bold tabular-nums text-destructive">

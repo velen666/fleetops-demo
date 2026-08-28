@@ -438,7 +438,7 @@ function exportCsv(): void {
       <p class="text-sm text-muted-foreground">
         Рабочая очередь разбора: откройте инцидент и пройдите его от причины до закрытия.
       </p>
-      <div class="flex gap-2">
+      <div class="flex w-full flex-wrap gap-2 lg:w-auto">
         <Button v-if="auth.can('incidents.create')" size="sm" class="min-h-9" @click="openCreate"
           ><Plus class="size-4 mr-1" /> Создать инцидент</Button
         >
@@ -632,19 +632,19 @@ function exportCsv(): void {
     <!-- Table -->
     <Card>
       <CardContent class="p-0">
-        <Table>
+        <Table class="lg:max-2xl:table-fixed lg:max-2xl:[&_td]:px-3 lg:max-2xl:[&_th]:px-3">
           <TableHeader>
             <TableRow>
-              <TableHead class="py-3 px-4">Номер</TableHead>
-              <TableHead class="py-3 px-4">Что наблюдаем</TableHead>
-              <TableHead class="py-3 px-4">Робот</TableHead>
-              <TableHead class="py-3 px-4">Объект</TableHead>
-              <TableHead class="py-3 px-4">Статус</TableHead>
-              <TableHead class="py-3 px-4">Причина</TableHead>
-              <TableHead class="py-3 px-4">Простой</TableHead>
-              <TableHead class="py-3 px-4">Потери</TableHead>
-              <TableHead class="py-3 px-4">Координатор</TableHead>
-              <TableHead class="py-3 px-4">Следующее действие</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-30">Номер</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-[33%]">Что наблюдаем</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:hidden">Робот</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:hidden">Объект</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-30">Статус</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:hidden">Причина</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-20">Простой</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-24">Потери</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:hidden">Координатор</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-44">Следующее действие</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -654,26 +654,39 @@ function exportCsv(): void {
               class="row-interactive cursor-pointer"
               @click="goTo(inc.id)"
             >
-              <TableCell class="font-mono text-xs py-3 px-4">{{ inc.incidentNumber }}</TableCell>
-              <TableCell class="text-xs py-3 px-4 max-w-xs">
-                <p class="font-medium truncate">
+              <TableCell class="font-mono text-xs py-3 px-4 lg:max-2xl:w-30">{{
+                inc.incidentNumber
+              }}</TableCell>
+              <TableCell
+                class="text-xs py-3 px-4 max-w-xs lg:max-2xl:w-[33%] lg:max-2xl:max-w-none"
+              >
+                <p
+                  class="font-medium truncate"
+                  :title="incidentTypeLabel(inc.incidentTypeCode).split(' · ')[1]"
+                >
                   {{ incidentTypeLabel(inc.incidentTypeCode).split(' · ')[1] }}
                 </p>
-                <p class="text-muted-foreground truncate">{{ inc.title }}</p>
+                <p class="text-muted-foreground truncate" :title="inc.title">{{ inc.title }}</p>
               </TableCell>
-              <TableCell class="text-xs py-3 px-4">{{ robotName(inc.robotId) }}</TableCell>
-              <TableCell class="text-xs py-3 px-4">{{ siteName(inc.siteId) }}</TableCell>
-              <TableCell class="py-3 px-4">
+              <TableCell class="text-xs py-3 px-4 lg:max-2xl:hidden">{{
+                robotName(inc.robotId)
+              }}</TableCell>
+              <TableCell class="text-xs py-3 px-4 lg:max-2xl:hidden">{{
+                siteName(inc.siteId)
+              }}</TableCell>
+              <TableCell class="py-3 px-4 lg:max-2xl:w-30 lg:max-2xl:whitespace-normal">
                 <span
                   class="text-xs rounded px-1.5 py-0.5"
                   :class="INCIDENT_STATUS_CLASS[inc.status]"
                   >{{ STATUS_RU[inc.status] }}</span
                 >
               </TableCell>
-              <TableCell class="text-xs py-3 px-4 max-w-[200px]">
-                <p class="truncate">{{ causeLabel(inc.causeCode).split(' · ')[1] ?? '—' }}</p>
+              <TableCell class="text-xs py-3 px-4 max-w-[200px] lg:max-2xl:hidden">
+                <p class="truncate" :title="causeLabel(inc.causeCode).split(' · ')[1] ?? '—'">
+                  {{ causeLabel(inc.causeCode).split(' · ')[1] ?? '—' }}
+                </p>
               </TableCell>
-              <TableCell class="text-xs py-3 px-4">
+              <TableCell class="text-xs py-3 px-4 lg:max-2xl:w-20">
                 <span v-if="inc.downtimeSeconds > 0" class="tabular-nums">{{
                   fmtDur(inc.downtimeSeconds)
                 }}</span>
@@ -682,17 +695,24 @@ function exportCsv(): void {
                 >
                 <span v-else class="text-muted-foreground">—</span>
               </TableCell>
-              <TableCell class="text-xs tabular-nums py-3 px-4">
+              <TableCell class="text-xs py-3 px-4 tabular-nums lg:max-2xl:w-24">
                 <span v-if="inc.lossRubles > 0"
                   >{{ inc.lossRubles.toLocaleString('ru-RU') }} ₽</span
                 >
                 <span v-else class="text-muted-foreground">—</span>
               </TableCell>
-              <TableCell class="text-xs py-3 px-4">{{ inc.coordinatorName ?? '—' }}</TableCell>
-              <TableCell class="text-xs py-3 px-4 max-w-[220px]">
-                <span v-if="stepLabelOf(inc.id)" class="text-muted-foreground truncate block">{{
-                  stepLabelOf(inc.id)
-                }}</span>
+              <TableCell class="text-xs py-3 px-4 lg:max-2xl:hidden">{{
+                inc.coordinatorName ?? '—'
+              }}</TableCell>
+              <TableCell
+                class="text-xs py-3 px-4 max-w-[220px] lg:max-2xl:w-44 lg:max-2xl:max-w-none"
+              >
+                <span
+                  v-if="stepLabelOf(inc.id)"
+                  class="text-muted-foreground truncate block"
+                  :title="stepLabelOf(inc.id) ?? undefined"
+                  >{{ stepLabelOf(inc.id) }}</span
+                >
                 <span v-else class="text-success">закрыт</span>
               </TableCell>
             </TableRow>

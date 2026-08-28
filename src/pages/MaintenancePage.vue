@@ -331,18 +331,18 @@ function totalCost(m: MaintenanceWork): number {
     <!-- Table -->
     <Card>
       <CardContent class="p-0">
-        <Table>
+        <Table class="lg:max-2xl:table-fixed">
           <TableHeader>
             <TableRow>
-              <TableHead class="py-3 px-4">Вид</TableHead>
-              <TableHead class="py-3 px-4">Название</TableHead>
-              <TableHead class="py-3 px-4">Робот</TableHead>
-              <TableHead class="py-3 px-4">Объект</TableHead>
-              <TableHead class="py-3 px-4">Инцидент</TableHead>
-              <TableHead class="py-3 px-4">Исполнитель</TableHead>
-              <TableHead class="py-3 px-4">Срок возврата</TableHead>
-              <TableHead class="py-3 px-4">Статус</TableHead>
-              <TableHead class="py-3 px-4">Стоимость</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-26">Вид</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-[42%]">Название</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:hidden">Робот</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:hidden">Объект</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:hidden">Инцидент</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:hidden">Исполнитель</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-28">Срок возврата</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-36">Статус</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-24">Стоимость</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -352,7 +352,7 @@ function totalCost(m: MaintenanceWork): number {
               class="row-interactive cursor-pointer"
               @click="openWork(m)"
             >
-              <TableCell class="py-3 px-4">
+              <TableCell class="py-3 px-4 lg:max-2xl:w-26">
                 <span
                   class="text-xs rounded px-1.5 py-0.5"
                   :class="
@@ -365,13 +365,19 @@ function totalCost(m: MaintenanceWork): number {
                   >{{ MAINTENANCE_TYPE_RU[m.type] }}</span
                 >
               </TableCell>
-              <TableCell class="text-xs py-3 px-4 max-w-xs">
-                <p class="font-medium truncate">{{ m.title }}</p>
+              <TableCell
+                class="text-xs py-3 px-4 max-w-xs lg:max-2xl:w-[42%] lg:max-2xl:max-w-none"
+              >
+                <p class="font-medium truncate" :title="m.title">{{ m.title }}</p>
                 <p v-if="m.incidentId" class="text-primary text-xs">связан с инцидентом</p>
               </TableCell>
-              <TableCell class="text-xs py-3 px-4">{{ robotName(m.robotId) }}</TableCell>
-              <TableCell class="text-xs py-3 px-4">{{ siteName(m.siteId) }}</TableCell>
-              <TableCell class="text-xs py-3 px-4">
+              <TableCell class="text-xs py-3 px-4 lg:max-2xl:hidden">{{
+                robotName(m.robotId)
+              }}</TableCell>
+              <TableCell class="text-xs py-3 px-4 lg:max-2xl:hidden">{{
+                siteName(m.siteId)
+              }}</TableCell>
+              <TableCell class="text-xs py-3 px-4 lg:max-2xl:hidden">
                 <button
                   v-if="m.incidentId"
                   type="button"
@@ -382,13 +388,13 @@ function totalCost(m: MaintenanceWork): number {
                 </button>
                 <span v-else class="text-muted-foreground">—</span>
               </TableCell>
-              <TableCell class="text-xs py-3 px-4">{{ m.executor }}</TableCell>
-              <TableCell class="text-xs py-3 px-4">
+              <TableCell class="text-xs py-3 px-4 lg:max-2xl:hidden">{{ m.executor }}</TableCell>
+              <TableCell class="text-xs py-3 px-4 lg:max-2xl:w-28">
                 {{ fmtDate(m.dueAt) }}
                 <span v-if="isOverdue(m)" class="block text-destructive">просрочено</span>
                 <span v-if="m.returnedToParkAt" class="block text-success">возвращён в парк</span>
               </TableCell>
-              <TableCell class="py-3 px-4">
+              <TableCell class="py-3 px-4 lg:max-2xl:w-36">
                 <span class="text-xs rounded px-1.5 py-0.5" :class="STATUS_CLASS[m.status]">{{
                   MAINTENANCE_STATUS_RU[m.status]
                 }}</span>
@@ -398,7 +404,7 @@ function totalCost(m: MaintenanceWork): number {
                   >контр. запуск</span
                 >
               </TableCell>
-              <TableCell class="text-xs py-3 px-4 tabular-nums">
+              <TableCell class="text-xs py-3 px-4 tabular-nums lg:max-2xl:w-24">
                 <span v-if="totalCost(m) > 0">{{ totalCost(m).toLocaleString('ru-RU') }} ₽</span>
                 <span v-else class="text-muted-foreground">—</span>
               </TableCell>

@@ -45,6 +45,19 @@ test('сквозной разбор (v2 §6): координатор → без�
   await page.waitForURL(/\/incidents\//, { timeout: 10_000 })
   await expect(page.getByText('Следующее действие:').first()).toBeVisible({ timeout: 10_000 })
 
+  // На рабочем инциденте следующий шаг — единственный primary CTA. Резерв
+  // остаётся доступен для контекста, но не конкурирует с назначением координатора.
+  const decisionPanel = page
+    .locator('[data-slot="card"]')
+    .filter({ has: page.getByText('Следующее действие:', { exact: true }) })
+  await expect(decisionPanel.getByRole('button', { name: 'Назначить координатора' })).toBeVisible()
+  await expect(decisionPanel.getByRole('button', { name: 'Назначить резерв' })).toBeHidden()
+  const secondaryTrigger = decisionPanel.getByRole('button', { name: 'Дополнительные действия' })
+  await secondaryTrigger.focus()
+  await secondaryTrigger.press('Enter')
+  await expect(page.getByRole('button', { name: 'Назначить резерв' })).toBeVisible()
+  await secondaryTrigger.press('Enter')
+
   // 1. Принять в работу (безопасность фиксируется автоматически — ACC-029)
   await page.locator('button', { hasText: 'Назначить координатора' }).click()
   await page.locator('[role="dialog"] button', { hasText: 'Принять в работу' }).click()

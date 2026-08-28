@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDemoData } from '@/composables/useDemoData'
 import {
+  confirmedLossRubles,
   plannedRobotHours as plannedRobotHoursOf,
   powerAvailabilityPct,
   techAvailabilityPct,
@@ -33,6 +34,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { ArrowRight, Download, TrendingDown } from 'lucide-vue-next'
 import { downloadCsv } from '@/lib/csv'
+import { ruCount } from '@/lib/utils'
 import {
   Select,
   SelectContent,
@@ -84,6 +86,10 @@ const scopedIncidents = scope.incidents(incidents.value)
 const scopedSites = scope.sites(sites.value)
 const scopedRobots = scope.robots(robots.value)
 const scopedMaintenance = scope.maintenance(maintenance.value)
+const scopedDowntimes = scope.downtimes(downtimes.value)
+
+/** Контрольная сумма портфеля вне текущих фильтров — не подменяет срез. */
+const portfolioConfirmedLoss = computed(() => confirmedLossRubles(scopedDowntimes.value))
 
 const robotOptions = computed(() =>
   scopedRobots.value.filter((r) => filterSite.value === 'all' || r.siteId === filterSite.value),
@@ -259,7 +265,7 @@ const executiveInsight = computed(() => {
     }
   return {
     title: `${cause.name} — ${cause.loss.toLocaleString('ru-RU')} ₽ подтверждённых потерь`,
-    detail: `${cause.count} случаев · ${cause.sitesCount} объекта · ${cause.zonesCount} зон. Откройте причину, чтобы перейти к инцидентам и доказательствам.`,
+    detail: `${ruCount(cause.count, ['случай', 'случая', 'случаев'])} · ${ruCount(cause.sitesCount, ['объект', 'объекта', 'объектов'])} · ${ruCount(cause.zonesCount, ['зона', 'зоны', 'зон'])}. Откройте причину, чтобы перейти к инцидентам и доказательствам.`,
     causeCode: cause.code,
   }
 })
@@ -515,16 +521,22 @@ function exportBreakdownCsv(): void {
           </h2>
           <p class="mt-2 text-sm leading-6 text-muted-foreground">{{ executiveInsight.detail }}</p>
         </div>
-        <div class="flex items-center gap-2 text-sm text-muted-foreground">
-          <TrendingDown class="size-4 text-destructive" />
-          {{ kpis.confirmedLoss.toLocaleString('ru-RU') }} ₽
+        <div class="text-right">
+          <p class="text-xs text-muted-foreground">
+            Портфель: {{ portfolioConfirmedLoss.toLocaleString('ru-RU') }} ₽ · 30 дней
+          </p>
+          <p class="mt-1 flex items-center justify-end gap-2 text-sm text-muted-foreground">
+            <TrendingDown class="size-4 text-destructive" />
+            Текущая выборка: {{ kpis.confirmedLoss.toLocaleString('ru-RU') }} ₽
+          </p>
         </div>
       </div>
       <div
         class="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-4"
       >
         <p class="text-xs text-muted-foreground">
-          Ремонт {{ kpis.repairCost.toLocaleString('ru-RU') }} ₽ отдельно от потерь · резерв
+          Ремонт {{ kpis.repairCost.toLocaleString('ru-RU') }} ₽ отдельно от потерь ·
+          {{ kpis.activeIncidents }} активных инцидентов · резерв
           {{ kpis.reserveBelow.length > 0 ? 'ниже норматива' : 'в норме' }}
         </p>
         <Button
@@ -608,6 +620,14 @@ function exportBreakdownCsv(): void {
     </Card>
 
     <!-- 32.2 Верхняя сводка (ТЗ v2.0 §9.2) -->
+    <div class="flex flex-wrap items-end justify-between gap-2">
+      <div>
+        <p class="eyebrow">Ключевые сигналы текущей выборки</p>
+        <p class="mt-1 text-sm text-muted-foreground">
+          Фильтры выше уточняют срез; контрольная сумма портфеля остаётся в hero.
+        </p>
+      </div>
+    </div>
     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
       <Card tone="data" density="compact">
         <CardContent class="p-4">
@@ -655,32 +675,6 @@ function exportBreakdownCsv(): void {
           </p>
         </CardContent>
       </Card>
-      <Card tone="data" density="compact">
-        <CardContent class="p-4">
-          <p class="text-sm text-muted-foreground">Стоимость ремонта</p>
-          <p class="text-2xl font-bold tabular-nums">
-            {{ kpis.repairCost.toLocaleString('ru-RU') }} ₽
-          </p>
-          <p class="text-xs text-muted-foreground mt-0.5">
-            труд + запчасти по {{ kpis.repairWorks }} работам — отдельно от потерь
-          </p>
-        </CardContent>
-      </Card>
-      <Card tone="data" density="compact">
-        <CardContent class="p-4">
-          <p class="text-sm text-muted-foreground">Инциденты и бэклог</p>
-          <p class="text-2xl font-bold tabular-nums">
-            {{ kpis.activeIncidents }}
-            <span class="text-base font-normal text-muted-foreground">акт. ·</span>
-            {{ kpis.backlogRobots }}
-            <span class="text-base font-normal text-muted-foreground">в сервисе</span>
-          </p>
-          <p class="text-xs text-muted-foreground mt-0.5">
-            всего {{ kpis.incidentsCount }} · работ {{ kpis.backlogWorks }} · разборов не завершено
-            {{ kpis.unfinishedReviews }}
-          </p>
-        </CardContent>
-      </Card>
       <Card
         tone="data"
         density="compact"
@@ -716,27 +710,33 @@ function exportBreakdownCsv(): void {
           </p></CardHeader
         >
         <CardContent>
-          <ChartCard
-            type="bar"
-            :labels="causeChartLabels"
-            :datasets="[{ label: 'Потери', data: causeChartData }]"
-            horizontal
-            suffix=" ₽"
-          />
+          <div class="hidden sm:block">
+            <ChartCard
+              type="bar"
+              :labels="causeChartLabels"
+              :datasets="[{ label: 'Потери', data: causeChartData }]"
+              horizontal
+              suffix=" ₽"
+            />
+          </div>
+          <p class="mb-3 text-xs text-muted-foreground sm:hidden">
+            На мобильном устройстве используйте список ниже: он сохраняет полные причины и суммы.
+          </p>
           <div class="mt-3 space-y-1">
-            <button
+            <Button
               v-for="row in causeRows"
               :key="row.code"
-              type="button"
-              class="w-full flex items-center justify-between text-left text-sm px-3 py-2 rounded-lg hover:bg-accent/50"
+              variant="ghost"
+              class="h-auto w-full flex-col items-start gap-1 whitespace-normal px-3 py-2 text-left text-sm sm:flex-row sm:items-center sm:justify-between"
               @click="openCauseDetail(row.code)"
             >
-              <span class="truncate">{{ row.name }}</span>
-              <span class="tabular-nums text-xs text-muted-foreground shrink-0 ml-3"
+              <span class="w-full leading-5 sm:flex-1">{{ row.name }}</span>
+              <span
+                class="w-full tabular-nums text-xs text-muted-foreground sm:w-auto sm:shrink-0 sm:pl-3 sm:text-right"
                 >{{ row.count }} сл. · {{ row.hours.toFixed(1) }} ч ·
                 {{ row.loss.toLocaleString('ru-RU') }} ₽ ({{ row.share.toFixed(0) }}%)</span
               >
-            </button>
+            </Button>
           </div>
         </CardContent>
       </Card>

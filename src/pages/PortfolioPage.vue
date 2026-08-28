@@ -8,6 +8,7 @@ import { ArrowRight } from 'lucide-vue-next'
 import { RouterLink, useRouter } from 'vue-router'
 import { CAUSE_CATALOG } from '@/data/generator'
 import { impactSeconds, techAvailabilityPct, powerAvailabilityPct } from '@/data/metrics'
+import { ruCount } from '@/lib/utils'
 
 /**
  * Главная страница руководителя эксплуатации/роботизации (Отчёт приёмки
@@ -178,7 +179,11 @@ const primaryKpis = computed<
   {
     label: 'Просрочено ТОиР',
     value: String(fleetKpis.value.overdue),
-    detail: 'работ требует контроля',
+    detail: ruCount(fleetKpis.value.overdue, [
+      'работа требует контроля',
+      'работы требуют контроля',
+      'работ требуют контроля',
+    ]),
     valueClass: fleetKpis.value.overdue > 0 ? 'text-destructive' : 'text-success',
     to: 'maintenance',
   },
@@ -222,6 +227,9 @@ const decisionQueue = computed(() =>
     .slice(0, 8),
 )
 
+/** Ведущее решение остаётся в hero: маршрут портфель → конкретный инцидент. */
+const priorityDecision = computed(() => decisionQueue.value[0] ?? null)
+
 function goSite(id: string): void {
   router.push({ name: 'site-details', params: { siteId: id } })
 }
@@ -259,7 +267,13 @@ const VERDICT_RU: Record<SiteCard['verdict'], string> = {
             <p v-if="portfolioVerdict.worst" class="mt-3 text-sm leading-6 text-muted-foreground">
               Главное отклонение: {{ portfolioVerdict.worst.name }} —
               {{ fmtMoney(portfolioVerdict.worst.loss) }} ₽ подтверждённых потерь и
-              {{ portfolioVerdict.worst.activeIncidents }} активных инцидентов.
+              {{
+                ruCount(portfolioVerdict.worst.activeIncidents, [
+                  'активный инцидент',
+                  'активных инцидента',
+                  'активных инцидентов',
+                ])
+              }}.
             </p>
           </div>
           <div class="grid min-w-[17rem] grid-cols-2 gap-x-7 gap-y-4 text-sm sm:grid-cols-4">
@@ -283,16 +297,51 @@ const VERDICT_RU: Record<SiteCard['verdict'], string> = {
             </div>
           </div>
         </div>
-        <div
-          class="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-4"
-        >
-          <p class="text-xs text-muted-foreground">
+        <div class="grid gap-3 border-t border-border/60 pt-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+          <div v-if="priorityDecision" class="min-w-0">
+            <p class="eyebrow">Приоритет в очереди</p>
+            <p class="mt-1 text-sm font-semibold">
+              {{ priorityDecision.incident.incidentNumber }} · {{ priorityDecision.step?.label }}
+            </p>
+            <p
+              class="mt-1 text-xs leading-5 text-muted-foreground sm:truncate lg:overflow-visible lg:text-clip lg:whitespace-normal lg:text-pretty"
+            >
+              {{ priorityDecision.incident.description }}
+            </p>
+            <p class="mt-1 text-xs text-muted-foreground">
+              Ответственный: {{ priorityDecision.step?.owner ?? 'не назначен' }}
+            </p>
+          </div>
+          <p v-else class="self-center text-xs text-muted-foreground">
             Контур: MTTR {{ fleetKpis.mttrHours.toFixed(1) }} ч · сервисный бэклог
-            {{ fleetKpis.backlog }} · активных инцидентов {{ portfolioVerdict.decisions }}
+            {{ fleetKpis.backlog }} ·
+            {{
+              ruCount(portfolioVerdict.decisions, [
+                'активный инцидент',
+                'активных инцидента',
+                'активных инцидентов',
+              ])
+            }}
           </p>
-          <Button v-if="portfolioVerdict.worst" @click="goSite(portfolioVerdict.worst.id)">
-            Открыть объект <ArrowRight class="size-4" />
-          </Button>
+          <div class="flex flex-wrap items-center gap-2">
+            <Button v-if="priorityDecision" as-child>
+              <RouterLink
+                :to="{
+                  name: 'incident-details',
+                  params: { incidentId: priorityDecision.incident.id },
+                }"
+              >
+                Открыть инцидент <ArrowRight class="size-4" />
+              </RouterLink>
+            </Button>
+            <Button
+              v-if="portfolioVerdict.worst"
+              variant="outline"
+              @click="goSite(portfolioVerdict.worst.id)"
+            >
+              Открыть объект
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -322,33 +371,46 @@ const VERDICT_RU: Record<SiteCard['verdict'], string> = {
         class="card-data kpi-clickable h-auto flex-col items-stretch gap-0 overflow-hidden p-0 text-left hover:border-primary/40"
       >
         <RouterLink :to="{ name: 'site-details', params: { siteId: c.id } }">
-          <CardHeader class="pb-2">
+          <CardHeader class="pb-3">
             <CardTitle class="text-base flex items-center justify-between gap-2">
               {{ c.name }}
-              <span class="text-xs font-medium" :class="VERDICT_CLASS[c.verdict]">
+              <span class="status-pill" :class="VERDICT_CLASS[c.verdict]">
                 {{ VERDICT_RU[c.verdict] }}
               </span>
             </CardTitle>
-            <CardDescription class="tabular-nums">
-              Парк {{ c.fleet }}: {{ c.working }} работают · {{ c.reserve }}/{{
-                c.reserveNorm
-              }}
-              резерв · {{ c.service }} сервис
+            <CardDescription>
+              Парк {{ c.fleet }} роботов · {{ c.working }} работают
             </CardDescription>
           </CardHeader>
-          <CardContent class="text-xs space-y-1 tabular-nums">
-            <p>
-              Техническая доступность
-              <span class="font-medium">{{ c.techAvailability.toFixed(1) }}%</span>
-              · мощность
-              <span class="font-medium">{{ c.powerAvailability.toFixed(1) }}%</span>
-            </p>
-            <p>
-              Влияние на процесс <span class="font-medium">{{ c.impactHours.toFixed(1) }} ч</span>
-            </p>
-            <p class="text-destructive font-medium">Потери {{ fmtMoney(c.loss) }} ₽</p>
-            <p class="text-muted-foreground">
-              Активных инцидентов: {{ c.activeIncidents }} · бэклог: {{ c.backlog }}
+          <CardContent
+            class="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-border/60 pt-4 text-xs"
+          >
+            <div>
+              <p class="text-muted-foreground">Потери</p>
+              <p class="mt-1 font-semibold tabular-nums text-destructive">
+                {{ fmtMoney(c.loss) }} ₽
+              </p>
+            </div>
+            <div>
+              <p class="text-muted-foreground">Активные инциденты</p>
+              <p class="mt-1 font-semibold tabular-nums">{{ c.activeIncidents }}</p>
+            </div>
+            <div>
+              <p class="text-muted-foreground">Резерв</p>
+              <p
+                class="mt-1 font-semibold tabular-nums"
+                :class="c.reserve < c.reserveNorm ? 'text-warning' : 'text-success'"
+              >
+                {{ c.reserve }} / {{ c.reserveNorm }}
+              </p>
+            </div>
+            <div>
+              <p class="text-muted-foreground">Сервис / бэклог</p>
+              <p class="mt-1 font-semibold tabular-nums">{{ c.service }} / {{ c.backlog }}</p>
+            </div>
+            <p class="col-span-2 border-t border-border/50 pt-2 text-muted-foreground tabular-nums">
+              Тех. доступность {{ c.techAvailability.toFixed(1) }}% · мощность
+              {{ c.powerAvailability.toFixed(1) }}% · влияние {{ c.impactHours.toFixed(1) }} ч
             </p>
           </CardContent>
         </RouterLink>
@@ -374,7 +436,8 @@ const VERDICT_RU: Record<SiteCard['verdict'], string> = {
             <RouterLink :to="{ name: 'analytics', query: { cause: sc.code, view: 'site' } }">
               <span>{{ CAUSE_CATALOG[sc.code]?.name ?? sc.code }}</span>
               <span class="tabular-nums text-xs text-muted-foreground">
-                {{ sc.count }} случаев · {{ sc.sites.size }} объекта ·
+                {{ ruCount(sc.count, ['случай', 'случая', 'случаев']) }} ·
+                {{ ruCount(sc.sites.size, ['объект', 'объекта', 'объектов']) }} ·
                 <span class="text-destructive">{{ fmtMoney(sc.loss) }} ₽</span>
               </span>
             </RouterLink>
@@ -403,7 +466,9 @@ const VERDICT_RU: Record<SiteCard['verdict'], string> = {
           >
             <RouterLink :to="{ name: 'incident-details', params: { incidentId: row.incident.id } }">
               <span class="font-mono text-xs">{{ row.incident.incidentNumber }}</span>
-              <span class="flex-1 truncate ml-2">{{ row.incident.description.slice(0, 80) }}</span>
+              <span class="ml-2 flex-1 truncate" :title="row.incident.description">{{
+                row.incident.description
+              }}</span>
               <span class="text-xs text-muted-foreground"
                 >{{ row.step?.label }} · {{ row.step?.owner }}</span
               >

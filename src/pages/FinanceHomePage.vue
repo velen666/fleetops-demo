@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { TrendingDown, ArrowRight, ShieldCheck, Hourglass } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { confirmedLossRubles } from '@/data/metrics'
+import { ruCount } from '@/lib/utils'
 
 /**
  * Главная страница финансово-операционного директора (Отчёт приёмки §10.5,
@@ -133,7 +134,8 @@ function goIncident(id: string): void {
                 <Hourglass class="size-3.5" /> Предварительно (открытые)
               </p>
               <p class="font-bold tabular-nums text-warning">
-                {{ fmtMoney(preliminary.loss) }} ₽ · {{ preliminary.count }} простоев
+                {{ fmtMoney(preliminary.loss) }} ₽ ·
+                {{ ruCount(preliminary.count, ['простой', 'простоя', 'простоев']) }}
               </p>
             </div>
           </div>
@@ -168,8 +170,14 @@ function goIncident(id: string): void {
           >
             <span class="font-medium">{{ s.name }}</span>
             <span class="tabular-nums text-xs text-muted-foreground">
-              {{ s.count }} подтверждённых простоев · {{ s.hours.toFixed(1) }} ч ×
-              {{ fmtMoney(s.rate) }} ₽/ч =
+              {{
+                ruCount(s.count, [
+                  'подтверждённый простой',
+                  'подтверждённых простоя',
+                  'подтверждённых простоев',
+                ])
+              }}
+              · {{ s.hours.toFixed(1) }} ч × {{ fmtMoney(s.rate) }} ₽/ч =
               <span class="text-destructive font-medium">{{ fmtMoney(s.loss) }} ₽</span>
             </span>
           </div>

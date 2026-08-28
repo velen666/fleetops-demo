@@ -43,7 +43,9 @@ test('ACC-001: ранний возврат робота в парк заблок
   await page.locator('button', { hasText: 'Подтвердить ввод резерва' }).click()
   await expect(page.getByText('Процесс восстановлен, сервис продолжается').first()).toBeVisible()
 
-  // Без причины и сервиса возврат недоступен (ACC-001).
+  // Без причины и сервиса возврат недоступен (ACC-001). Действие находится
+  // во вторичном контексте: оно не конкурирует с текущим следующим шагом.
+  await page.getByRole('button', { name: 'Дополнительные действия' }).click()
   const returnBtn = page.locator('button', { hasText: 'Вернуть робота в парк' })
   await expect(returnBtn).toBeVisible()
   await expect(returnBtn).toBeDisabled()
@@ -133,7 +135,9 @@ test('ACC-004: детерминированная экономика живог�
 test('ACC-006: финансовый директор не видит операционных действий', async ({ page }) => {
   await loginAs(page, 'Финансовый', 'finance')
   await page.goto(`${BASE}/incidents`)
-  await page.locator('tbody tr', { hasText: 'INC-2026-0033' }).first().click()
+  // INC-0028 уже находится после восстановления процесса: проверяем, что
+  // read-only роль не получает ложный secondary CTA возврата в парк.
+  await page.locator('tbody tr', { hasText: 'INC-2026-0028' }).first().click()
   await page.waitForURL(/\/incidents\//, { timeout: 10_000 })
 
   await expect(page.locator('button', { hasText: 'Добавить наблюдение' })).toHaveCount(0)
@@ -141,6 +145,7 @@ test('ACC-006: финансовый директор не видит опера�
   await expect(page.locator('button', { hasText: 'Назначить координатора' })).toHaveCount(0)
   await expect(page.locator('button', { hasText: 'Вернуть робота в парк' })).toHaveCount(0)
   await expect(page.locator('button', { hasText: 'Закрыть инцидент' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Дополнительные действия' })).toHaveCount(0)
 })
 
 test('ACC-007: начальник склада видит в Отчётах только свой объект', async ({ page }) => {
@@ -187,8 +192,9 @@ test('ACC-023: контрольные метрики и консистентно
   await page.goto(`${BASE}/robots`)
   await expect(page.locator('tbody').first()).toBeVisible({ timeout: 15_000 })
   const row = page.locator('tbody tr', { hasText: 'FMR-001' }).first()
-  const listAvail = ((await row.locator('td').filter({ hasText: '%' }).first().textContent()) ?? '')
-    .trim()
+  const listAvail = (
+    (await row.locator('td').filter({ hasText: '%' }).first().textContent()) ?? ''
+  ).trim()
   await row.click()
   await page.waitForURL(/\/robots\//, { timeout: 10_000 })
   await expect(page.getByText(/Техническая доступность \(30 дней\)/)).toBeVisible({
@@ -215,6 +221,7 @@ test('сценарий v1.1 шаг 8: руководитель эксплуат�
   await page.goto(`${BASE}/incidents`)
   await page.locator('tbody tr', { hasText: 'INC-2026-0033' }).first().click()
   await page.waitForURL(/\/incidents\//, { timeout: 10_000 })
+  await page.getByRole('button', { name: 'Дополнительные действия' }).click()
   await expect(page.locator('button', { hasText: 'Создать действие' })).toBeVisible()
 })
 

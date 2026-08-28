@@ -37,9 +37,13 @@ onMounted(() => {
   desktopMedia = window.matchMedia('(min-width: 1024px)')
   syncViewport()
   desktopMedia.addEventListener('change', syncViewport)
+  window.addEventListener('keydown', handleMobileNavKeyboard)
 })
 
-onBeforeUnmount(() => desktopMedia?.removeEventListener('change', syncViewport))
+onBeforeUnmount(() => {
+  desktopMedia?.removeEventListener('change', syncViewport)
+  window.removeEventListener('keydown', handleMobileNavKeyboard)
+})
 
 const iconMap: Record<string, Component> = {
   LayoutDashboard,
@@ -169,9 +173,13 @@ const navItems = computed(() =>
 )
 
 const currentTitle = computed(() => (route.meta?.title as string) ?? 'FleetOps')
-const roleContext = computed(() =>
-  auth.activeRoleCode === 'SITE_MANAGER' ? 'Объектовый контур' : 'Портфель роботизации',
-)
+const roleContext = computed(() => {
+  if (auth.activeRoleCode === 'SITE_MANAGER') return 'Объектовый контур'
+  if (['OPERATIONS_DIRECTOR', 'FINANCE_MANAGER'].includes(auth.activeRoleCode ?? ''))
+    return 'Экономический контур'
+  if (auth.activeRoleCode === 'SERVICE_ENGINEER') return 'Сервисный контур'
+  return 'Портфель роботизации'
+})
 const navGroups = computed(() => {
   const labels: Record<NavItem['group'], string> = {
     control: 'Управление',
@@ -200,6 +208,13 @@ function openMobileNav(): void {
 function closeMobileNav(returnFocus = true): void {
   mobileNavOpen.value = false
   if (returnFocus) void nextTick(() => mobileNavTrigger.value?.$el.focus())
+}
+
+function handleMobileNavKeyboard(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && mobileNavOpen.value && !isDesktop.value) {
+    event.preventDefault()
+    closeMobileNav()
+  }
 }
 
 function trapMobileFocus(event: KeyboardEvent): void {
@@ -245,7 +260,7 @@ function logout(): void {
     <Button
       v-if="mobileNavOpen"
       variant="ghost"
-      class="fixed inset-0 z-40 h-auto w-auto rounded-none p-0 lg:hidden"
+      class="fixed inset-0 z-40 h-auto w-auto rounded-none bg-background/60 p-0 backdrop-blur-sm hover:bg-background/60 dark:hover:bg-background/60 active:scale-100 lg:hidden"
       aria-label="Закрыть навигацию"
       @click="closeMobileNav()"
     >
@@ -269,7 +284,7 @@ function logout(): void {
         </div>
         <div>
           <span class="block text-lg font-bold tracking-tight">FleetOps</span>
-          <span class="text-xs text-muted-foreground">Operations Command Center</span>
+          <span class="text-xs text-muted-foreground">Центр управления</span>
         </div>
         <Button
           ref="mobileNavClose"

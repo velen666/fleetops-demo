@@ -43,6 +43,7 @@ test('cause dialog — counter hint, empty evidence placeholder, enabled submit 
   await page.locator('tbody tr').first().click()
   await page.waitForURL(/\/incidents\//, { timeout: 10_000 })
 
+  await page.getByRole('button', { name: 'Дополнительные действия' }).click()
   await page.locator('button', { hasText: 'Предварительная причина' }).click()
   const dlg = page.locator('[role="dialog"]')
   await expect(dlg).toBeVisible()
@@ -72,6 +73,7 @@ test('action dialog — due date via calendar popover + time input', async ({ pa
   await page.locator('tbody tr').first().click()
   await page.waitForURL(/\/incidents\//, { timeout: 10_000 })
 
+  await page.getByRole('button', { name: 'Дополнительные действия' }).click()
   await page.locator('button', { hasText: 'Создать действие' }).click()
   const dlg = page.locator('[role="dialog"]')
   await expect(dlg).toBeVisible()

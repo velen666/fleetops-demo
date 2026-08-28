@@ -105,6 +105,45 @@ const incidentCause = computed(() =>
 
 const step = computed(() => (incident.value ? nextStep(incident.value.id) : null))
 const canClose = computed(() => (incident.value ? readyToClose(incident.value.id) : false))
+const hasSecondaryActions = computed(() => {
+  const currentStep = step.value?.kind
+  if (!currentStep) return false
+  return (
+    (currentStep !== 'ASSIGN' && auth.can('incidents.assign')) ||
+    auth.can('events.create') ||
+    (currentStep !== 'SUBSTITUTE' &&
+      canSubstitute.value &&
+      auth.can('substitutions.create') &&
+      availableBackupsList.value.length > 0) ||
+    (currentStep !== 'ENGAGE' &&
+      !!substitution.value &&
+      !substitution.value.engagedAt &&
+      auth.can('substitutions.confirm')) ||
+    (currentStep !== 'RETURN_ROBOT' &&
+      processState.value.technicallyOpen &&
+      processState.value.processRestored &&
+      auth.can('incidents.recover')) ||
+    (currentStep !== 'CLASSIFY' && auth.can('causes.classify')) ||
+    (currentStep !== 'REFINE_CAUSE' &&
+      auth.can('causes.refine') &&
+      incident.value?.causeMaturity === 'PRIMARY') ||
+    (currentStep !== 'CONFIRM_CAUSE' &&
+      auth.can('causes.confirm') &&
+      incident.value?.causeMaturity === 'REFINED') ||
+    (currentStep !== 'CREATE_ACTION' && auth.can('actions.create')) ||
+    (currentStep !== 'COMPLETE_ACTION' &&
+      !!activeIncidentAction.value &&
+      auth.can('actions.complete')) ||
+    (currentStep !== 'CONFIRM_RECOVERY' &&
+      auth.can('actions.recovery.confirm') &&
+      !incident.value?.recoveryConfirmed) ||
+    (currentStep !== 'DECIDE_DOWNTIME' &&
+      auth.can('downtime.confirm') &&
+      !!incidentDowntime.value &&
+      !['CONFIRMED', 'ADJUSTED', 'REJECTED'].includes(incidentDowntime.value.confirmationStatus)) ||
+    (currentStep !== 'CLOSE' && auth.can('incidents.close'))
+  )
+})
 const actorName = computed(() => auth.user?.name ?? 'Демо-пользователь')
 
 // ─── Замещение и две контрольные точки (ТЗ v2.0 §5.3/§8.4) ────────────────
@@ -207,10 +246,6 @@ const recoveryRail = computed<RecoveryRailStep[]>(() => [
   },
 ])
 
-function actionVariant(kind: string): 'default' | 'outline' {
-  return step.value?.kind === kind ? 'default' : 'outline'
-}
-
 function submitReturn(): void {
   if (!incident.value) return
   const res = returnRobotToPark(incident.value.id, actorName.value)
@@ -246,6 +281,7 @@ const showComplete = ref(false)
 const showRecovery = ref(false)
 const showDowntime = ref(false)
 const showReopen = ref(false)
+const showSecondaryActions = ref(false)
 
 const obsText = ref('')
 const causeCode = ref('')
@@ -526,7 +562,7 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
       </CardContent>
     </Card>
 
-    <!-- Панель разбора: следующее обязательное действие + доступные действия (ТЗ §24) -->
+    <!-- Панель разбора: один следующий шаг + вторичные действия (ТЗ §24) -->
     <Card v-if="incident.status !== 'CLOSED'" tone="decision" density="compact">
       <CardContent class="p-4 space-y-3">
         <div class="flex flex-wrap items-center justify-between gap-3">
@@ -538,47 +574,47 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
           </div>
           <div class="flex flex-wrap gap-2">
             <Button
-              v-if="auth.can('incidents.assign')"
+              v-if="step?.kind === 'ASSIGN' && auth.can('incidents.assign')"
               size="sm"
-              :variant="actionVariant('ASSIGN')"
               class="min-h-9"
               @click="showAssign = true"
             >
               Назначить координатора
             </Button>
             <Button
-              v-if="auth.can('events.create')"
-              size="sm"
-              variant="outline"
-              class="min-h-9"
-              @click="showObservation = true"
-            >
-              Добавить наблюдение
-            </Button>
-            <Button
               v-if="
-                canSubstitute && auth.can('substitutions.create') && availableBackupsList.length > 0
+                step?.kind === 'SUBSTITUTE' &&
+                canSubstitute &&
+                auth.can('substitutions.create') &&
+                availableBackupsList.length > 0
               "
               size="sm"
-              :variant="actionVariant('SUBSTITUTE')"
               class="min-h-9"
               @click="showSubstitution = true"
             >
               Назначить резерв
             </Button>
             <Button
-              v-if="substitution && !substitution.engagedAt && auth.can('substitutions.confirm')"
+              v-if="
+                step?.kind === 'ENGAGE' &&
+                substitution &&
+                !substitution.engagedAt &&
+                auth.can('substitutions.confirm')
+              "
               size="sm"
-              :variant="actionVariant('ENGAGE')"
               class="min-h-9"
               @click="submitEngage"
             >
               Подтвердить ввод резерва
             </Button>
             <Button
-              v-if="processState.technicallyOpen && processState.processRestored"
+              v-if="
+                step?.kind === 'RETURN_ROBOT' &&
+                processState.technicallyOpen &&
+                processState.processRestored &&
+                auth.can('incidents.recover')
+              "
               size="sm"
-              :variant="actionVariant('RETURN_ROBOT')"
               class="min-h-9"
               :disabled="!returnCheck.ok"
               :title="returnCheck.ok ? '' : returnCheck.unmet.join('; ')"
@@ -587,54 +623,64 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
               Вернуть робота в парк
             </Button>
             <Button
-              v-if="auth.can('causes.classify')"
+              v-if="step?.kind === 'CLASSIFY' && auth.can('causes.classify')"
               size="sm"
-              :variant="actionVariant('CLASSIFY')"
               class="min-h-9"
               @click="openCause('PRIMARY')"
             >
               Предварительная причина
             </Button>
             <Button
-              v-if="auth.can('causes.refine') && incident.causeMaturity === 'PRIMARY'"
+              v-if="
+                step?.kind === 'REFINE_CAUSE' &&
+                auth.can('causes.refine') &&
+                incident.causeMaturity === 'PRIMARY'
+              "
               size="sm"
-              :variant="actionVariant('REFINE_CAUSE')"
               class="min-h-9"
               @click="openCause('REFINED')"
             >
               Уточнить причину
             </Button>
             <Button
-              v-if="auth.can('causes.confirm') && incident.causeMaturity === 'REFINED'"
+              v-if="
+                step?.kind === 'CONFIRM_CAUSE' &&
+                auth.can('causes.confirm') &&
+                incident.causeMaturity === 'REFINED'
+              "
               size="sm"
-              :variant="actionVariant('CONFIRM_CAUSE')"
               class="min-h-9"
               @click="openCause('FINAL')"
             >
               Подтвердить причину
             </Button>
             <Button
-              v-if="auth.can('actions.create')"
+              v-if="step?.kind === 'CREATE_ACTION' && auth.can('actions.create')"
               size="sm"
-              :variant="actionVariant('CREATE_ACTION')"
               class="min-h-9"
               @click="showAction = true"
             >
               Создать действие / ТОиР
             </Button>
             <Button
-              v-if="activeIncidentAction && auth.can('actions.complete')"
+              v-if="
+                step?.kind === 'COMPLETE_ACTION' &&
+                activeIncidentAction &&
+                auth.can('actions.complete')
+              "
               size="sm"
-              :variant="actionVariant('COMPLETE_ACTION')"
               class="min-h-9"
               @click="openComplete(activeIncidentAction.id)"
             >
               Зафиксировать результат
             </Button>
             <Button
-              v-if="auth.can('actions.recovery.confirm') && !incident.recoveryConfirmed"
+              v-if="
+                step?.kind === 'CONFIRM_RECOVERY' &&
+                auth.can('actions.recovery.confirm') &&
+                !incident.recoveryConfirmed
+              "
               size="sm"
-              :variant="actionVariant('CONFIRM_RECOVERY')"
               class="min-h-9"
               @click="showRecovery = true"
             >
@@ -642,12 +688,12 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
             </Button>
             <Button
               v-if="
+                step?.kind === 'DECIDE_DOWNTIME' &&
                 auth.can('downtime.confirm') &&
                 incidentDowntime &&
                 !['CONFIRMED', 'ADJUSTED', 'REJECTED'].includes(incidentDowntime.confirmationStatus)
               "
               size="sm"
-              :variant="actionVariant('DECIDE_DOWNTIME')"
               class="min-h-9"
               @click="
                 () => {
@@ -659,10 +705,192 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
               Решение по простою
             </Button>
             <Button
-              v-if="auth.can('incidents.close')"
+              v-if="step?.kind === 'CLOSE' && auth.can('incidents.close')"
               size="sm"
               class="min-h-9"
-              :variant="step?.kind === 'CLOSE' ? 'default' : 'outline'"
+              :disabled="!canClose"
+              @click="submitClose"
+            >
+              Закрыть инцидент
+            </Button>
+            <Button
+              v-if="hasSecondaryActions"
+              size="sm"
+              variant="outline"
+              class="min-h-9"
+              aria-controls="secondary-incident-actions"
+              :aria-expanded="showSecondaryActions"
+              @click="showSecondaryActions = !showSecondaryActions"
+            >
+              Дополнительные действия
+            </Button>
+          </div>
+        </div>
+        <div
+          v-if="showSecondaryActions"
+          id="secondary-incident-actions"
+          class="rounded-lg border border-border/70 bg-muted/30 p-3 space-y-3"
+        >
+          <p class="text-xs text-muted-foreground">
+            Не заменяют следующее действие. Гейты процесса и прав применяются при записи.
+          </p>
+          <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            <Button
+              v-if="step?.kind !== 'ASSIGN' && auth.can('incidents.assign')"
+              size="sm"
+              variant="outline"
+              class="min-h-9 justify-start"
+              @click="showAssign = true"
+            >
+              Назначить координатора
+            </Button>
+            <Button
+              v-if="auth.can('events.create')"
+              size="sm"
+              variant="outline"
+              class="min-h-9 justify-start"
+              @click="showObservation = true"
+            >
+              Добавить наблюдение
+            </Button>
+            <Button
+              v-if="
+                step?.kind !== 'SUBSTITUTE' &&
+                canSubstitute &&
+                auth.can('substitutions.create') &&
+                availableBackupsList.length > 0
+              "
+              size="sm"
+              variant="outline"
+              class="min-h-9 justify-start"
+              @click="showSubstitution = true"
+            >
+              Назначить резерв
+            </Button>
+            <Button
+              v-if="
+                step?.kind !== 'ENGAGE' &&
+                substitution &&
+                !substitution.engagedAt &&
+                auth.can('substitutions.confirm')
+              "
+              size="sm"
+              variant="outline"
+              class="min-h-9 justify-start"
+              @click="submitEngage"
+            >
+              Подтвердить ввод резерва
+            </Button>
+            <Button
+              v-if="
+                step?.kind !== 'RETURN_ROBOT' &&
+                processState.technicallyOpen &&
+                processState.processRestored &&
+                auth.can('incidents.recover')
+              "
+              size="sm"
+              variant="outline"
+              class="min-h-9 justify-start"
+              :disabled="!returnCheck.ok"
+              :title="returnCheck.ok ? '' : returnCheck.unmet.join('; ')"
+              @click="submitReturn"
+            >
+              Вернуть робота в парк
+            </Button>
+            <Button
+              v-if="step?.kind !== 'CLASSIFY' && auth.can('causes.classify')"
+              size="sm"
+              variant="outline"
+              class="min-h-9 justify-start"
+              @click="openCause('PRIMARY')"
+            >
+              Предварительная причина
+            </Button>
+            <Button
+              v-if="
+                step?.kind !== 'REFINE_CAUSE' &&
+                auth.can('causes.refine') &&
+                incident.causeMaturity === 'PRIMARY'
+              "
+              size="sm"
+              variant="outline"
+              class="min-h-9 justify-start"
+              @click="openCause('REFINED')"
+            >
+              Уточнить причину
+            </Button>
+            <Button
+              v-if="
+                step?.kind !== 'CONFIRM_CAUSE' &&
+                auth.can('causes.confirm') &&
+                incident.causeMaturity === 'REFINED'
+              "
+              size="sm"
+              variant="outline"
+              class="min-h-9 justify-start"
+              @click="openCause('FINAL')"
+            >
+              Подтвердить причину
+            </Button>
+            <Button
+              v-if="step?.kind !== 'CREATE_ACTION' && auth.can('actions.create')"
+              size="sm"
+              variant="outline"
+              class="min-h-9 justify-start"
+              @click="showAction = true"
+            >
+              Создать действие / ТОиР
+            </Button>
+            <Button
+              v-if="
+                step?.kind !== 'COMPLETE_ACTION' &&
+                activeIncidentAction &&
+                auth.can('actions.complete')
+              "
+              size="sm"
+              variant="outline"
+              class="min-h-9 justify-start"
+              @click="openComplete(activeIncidentAction.id)"
+            >
+              Зафиксировать результат
+            </Button>
+            <Button
+              v-if="
+                step?.kind !== 'CONFIRM_RECOVERY' &&
+                auth.can('actions.recovery.confirm') &&
+                !incident.recoveryConfirmed
+              "
+              size="sm"
+              variant="outline"
+              class="min-h-9 justify-start"
+              @click="showRecovery = true"
+            >
+              Подтвердить восстановление
+            </Button>
+            <Button
+              v-if="
+                step?.kind !== 'DECIDE_DOWNTIME' &&
+                auth.can('downtime.confirm') &&
+                incidentDowntime &&
+                !['CONFIRMED', 'ADJUSTED', 'REJECTED'].includes(incidentDowntime.confirmationStatus)
+              "
+              size="sm"
+              variant="outline"
+              class="min-h-9 justify-start"
+              @click="
+                () => {
+                  dtDecision = 'CONFIRM'
+                  showDowntime = true
+                }
+              "
+            >
+              Решение по простою
+            </Button>
+            <Button
+              v-if="step?.kind !== 'CLOSE' && auth.can('incidents.close')"
+              size="sm"
+              variant="outline"
+              class="min-h-9 justify-start"
               :disabled="!canClose"
               @click="submitClose"
             >

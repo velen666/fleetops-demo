@@ -153,14 +153,14 @@ const options = computed(() => {
         stacked: props.type === 'bar-stacked',
         ticks: {
           color: chartTheme.value.mutedForeground,
-          font: { size: 10 },
+          font: { size: 12, weight: 500 },
           callback: (val: unknown) => (typeof val === 'number' ? val.toLocaleString('ru-RU') : val),
         },
         grid: { color: chartTheme.value.border },
       },
       y: {
         stacked: props.type === 'bar-stacked',
-        ticks: { color: chartTheme.value.mutedForeground, font: { size: 10 } },
+        ticks: { color: chartTheme.value.mutedForeground, font: { size: 12, weight: 500 } },
         grid: { color: chartTheme.value.border },
       },
     },
