@@ -239,7 +239,7 @@ git commit -m "demo: foreground operational decisions on role homes"
 - Consumes current incident action/permission/next-step values and event handlers.
 - Produces a read-only recovery rail plus one existing primary next-action control; no new mutation path.
 
-- [ ] **Step 1: Define a typed display-only recovery rail**
+- [x] **Step 1: Define a typed display-only recovery rail**
 
 ```ts
 type RecoveryRailStep = { label: string; completed: boolean; detail: string }
@@ -254,7 +254,7 @@ const recoveryRail = computed<RecoveryRailStep[]>(() => [
 
 Complete the existing checkpoint sequence for reserve, process recovery, service and return to park.
 
-- [ ] **Step 2: Type-check the recovery rail**
+- [x] **Step 2: Type-check the recovery rail**
 
 ```powershell
 npm run type-check
@@ -262,11 +262,11 @@ npm run type-check
 
 Expected: successful type check and no write method used by recoveryRail.
 
-- [ ] **Step 3: Render rail and prioritise existing action**
+- [x] **Step 3: Render rail and prioritise existing action**
 
 Render semantic status-pill text before the action list. Keep current nextStep handler as the single primary Button. Retain other permitted actions as outline/secondary controls.
 
-- [ ] **Step 4: Run domain/build checks**
+- [x] **Step 4: Run domain/build checks**
 
 ```powershell
 npm test
@@ -276,7 +276,7 @@ npm run build
 
 Expected: data invariants, lint and production build pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/pages/IncidentDetailsPage.vue

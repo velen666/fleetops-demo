@@ -165,6 +165,47 @@ const returnCheck = computed(() =>
   incident.value ? returnGate(incident.value.id) : { ok: false, unmet: [] as string[] },
 )
 
+type RecoveryRailStep = {
+  label: string
+  completed: boolean
+  detail: string
+}
+
+const recoveryRail = computed<RecoveryRailStep[]>(() => [
+  {
+    label: 'Безопасность',
+    completed: Boolean(incident.value?.safetyConfirmedAt),
+    detail: incident.value?.safetyConfirmedAt ? 'Подтверждена' : 'Ожидает координатора',
+  },
+  {
+    label: 'Резерв / план Б',
+    completed: Boolean(substitution.value?.engagedAt) || processState.value.processRestored,
+    detail: substitution.value?.engagedAt ? 'Резерв введён' : 'Проверка мощности',
+  },
+  {
+    label: 'Процесс',
+    completed: processState.value.processRestored,
+    detail: processState.value.processRestored ? 'Восстановлен' : 'Потери продолжаются',
+  },
+  {
+    label: 'Сервис',
+    completed:
+      incidentActions.value.some(
+        (action) => action.status === 'COMPLETED' && action.result === 'SUCCESS',
+      ) && incident.value?.recoveryConfirmed === true,
+    detail: incident.value?.recoveryConfirmed ? 'Контрольный запуск подтверждён' : 'В работе',
+  },
+  {
+    label: 'Робот в парке',
+    completed: processState.value.robotReturned,
+    detail: processState.value.robotReturned ? 'Технедоступность закрыта' : 'Сервис продолжается',
+  },
+])
+
+function actionVariant(kind: string): 'default' | 'outline' {
+  return step.value?.kind === kind ? 'default' : 'outline'
+}
+
 function submitReturn(): void {
   if (!incident.value) return
   const res = returnRobotToPark(incident.value.id, actorName.value)
@@ -439,8 +480,49 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
       </CardContent>
     </Card>
 
+    <Card tone="data" density="compact" class="overflow-hidden">
+      <CardContent class="p-4">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p class="eyebrow">Маршрут восстановления</p>
+            <p class="mt-1 text-sm text-muted-foreground">
+              Потери прекращаются после восстановления процесса; техническая недоступность — только
+              после возврата робота.
+            </p>
+          </div>
+          <span class="status-pill bg-muted text-muted-foreground">
+            {{ processState.label }}
+          </span>
+        </div>
+        <ol
+          class="grid gap-2 sm:grid-cols-2 xl:grid-cols-5"
+          aria-label="Контрольные шаги инцидента"
+        >
+          <li
+            v-for="(railStep, index) in recoveryRail"
+            :key="railStep.label"
+            class="rounded-xl border p-3"
+            :class="
+              railStep.completed ? 'border-success/35 bg-success/10' : 'border-border bg-muted/40'
+            "
+          >
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs font-semibold">{{ index + 1 }} · {{ railStep.label }}</span>
+              <span
+                class="text-[10px] font-semibold"
+                :class="railStep.completed ? 'text-success' : 'text-muted-foreground'"
+              >
+                {{ railStep.completed ? 'Готово' : 'Ожидает' }}
+              </span>
+            </div>
+            <p class="mt-1 text-xs text-muted-foreground">{{ railStep.detail }}</p>
+          </li>
+        </ol>
+      </CardContent>
+    </Card>
+
     <!-- Панель разбора: следующее обязательное действие + доступные действия (ТЗ §24) -->
-    <Card v-if="incident.status !== 'CLOSED'" class="border-primary/40">
+    <Card v-if="incident.status !== 'CLOSED'" tone="decision" density="compact">
       <CardContent class="p-4 space-y-3">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div v-if="step" class="flex items-center gap-2 text-sm">
@@ -453,6 +535,7 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
             <Button
               v-if="auth.can('incidents.assign')"
               size="sm"
+              :variant="actionVariant('ASSIGN')"
               class="min-h-9"
               @click="showAssign = true"
             >
@@ -472,6 +555,7 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
                 canSubstitute && auth.can('substitutions.create') && availableBackupsList.length > 0
               "
               size="sm"
+              :variant="actionVariant('SUBSTITUTE')"
               class="min-h-9"
               @click="showSubstitution = true"
             >
@@ -480,6 +564,7 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
             <Button
               v-if="substitution && !substitution.engagedAt && auth.can('substitutions.confirm')"
               size="sm"
+              :variant="actionVariant('ENGAGE')"
               class="min-h-9"
               @click="submitEngage"
             >
@@ -488,7 +573,7 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
             <Button
               v-if="processState.technicallyOpen && processState.processRestored"
               size="sm"
-              variant="outline"
+              :variant="actionVariant('RETURN_ROBOT')"
               class="min-h-9"
               :disabled="!returnCheck.ok"
               :title="returnCheck.ok ? '' : returnCheck.unmet.join('; ')"
@@ -499,7 +584,7 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
             <Button
               v-if="auth.can('causes.classify')"
               size="sm"
-              variant="outline"
+              :variant="actionVariant('CLASSIFY')"
               class="min-h-9"
               @click="openCause('PRIMARY')"
             >
@@ -508,7 +593,7 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
             <Button
               v-if="auth.can('causes.refine') && incident.causeMaturity === 'PRIMARY'"
               size="sm"
-              variant="outline"
+              :variant="actionVariant('REFINE_CAUSE')"
               class="min-h-9"
               @click="openCause('REFINED')"
             >
@@ -517,7 +602,7 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
             <Button
               v-if="auth.can('causes.confirm') && incident.causeMaturity === 'REFINED'"
               size="sm"
-              variant="outline"
+              :variant="actionVariant('CONFIRM_CAUSE')"
               class="min-h-9"
               @click="openCause('FINAL')"
             >
@@ -526,7 +611,7 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
             <Button
               v-if="auth.can('actions.create')"
               size="sm"
-              variant="outline"
+              :variant="actionVariant('CREATE_ACTION')"
               class="min-h-9"
               @click="showAction = true"
             >
@@ -535,7 +620,7 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
             <Button
               v-if="auth.can('actions.recovery.confirm') && !incident.recoveryConfirmed"
               size="sm"
-              variant="outline"
+              :variant="actionVariant('CONFIRM_RECOVERY')"
               class="min-h-9"
               @click="showRecovery = true"
             >
@@ -548,7 +633,7 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
                 !['CONFIRMED', 'ADJUSTED', 'REJECTED'].includes(incidentDowntime.confirmationStatus)
               "
               size="sm"
-              variant="outline"
+              :variant="actionVariant('DECIDE_DOWNTIME')"
               class="min-h-9"
               @click="
                 () => {
