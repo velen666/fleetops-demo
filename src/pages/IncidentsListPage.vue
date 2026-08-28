@@ -64,6 +64,7 @@ function strParam(v: unknown, fallback: string): string {
 const activeQueue = ref<string>(strParam(route.query.queue, 'all'))
 const filterSite = ref(strParam(route.query.site, 'all'))
 const filterStatus = ref(strParam(route.query.status, 'all'))
+const filterCause = ref(strParam(route.query.cause, 'all'))
 const searchText = ref(strParam(route.query.q, ''))
 // ACC-009 (Отчёт §4.2): период, зона, робот, вендор, приоритет, координатор,
 // вид простоя — полный набор из ТЗ §8.3, сохраняются в URL.
@@ -80,6 +81,7 @@ watch(
     activeQueue,
     filterSite,
     filterStatus,
+    filterCause,
     searchText,
     filterPeriod,
     filterZone,
@@ -89,12 +91,13 @@ watch(
     filterCoordinator,
     filterDowntimeKind,
   ],
-  ([queue, site, status, q, period, zone, robot, vendor, priority, coordinator, dt]) => {
+  ([queue, site, status, cause, q, period, zone, robot, vendor, priority, coordinator, dt]) => {
     void router.replace({
       query: {
         ...(queue !== 'all' ? { queue } : {}),
         ...(site !== 'all' ? { site } : {}),
         ...(status !== 'all' ? { status } : {}),
+        ...(cause !== 'all' ? { cause } : {}),
         ...(q ? { q } : {}),
         ...(period !== '30' ? { period } : {}),
         ...(zone !== 'all' ? { zone } : {}),
@@ -245,6 +248,7 @@ const filteredIncidents = computed(() => {
   }
   if (filterSite.value !== 'all') result = result.filter((i) => i.siteId === filterSite.value)
   if (filterStatus.value !== 'all') result = result.filter((i) => i.status === filterStatus.value)
+  if (filterCause.value !== 'all') result = result.filter((i) => i.causeCode === filterCause.value)
   // ACC-009: период от сегодня назад по detectedAt.
   if (filterPeriod.value !== 'all') {
     const days = Number(filterPeriod.value)
@@ -378,6 +382,7 @@ function currentQuery(): Record<string, string> {
   if (activeQueue.value !== 'all') q.queue = activeQueue.value
   if (filterSite.value !== 'all') q.site = filterSite.value
   if (filterStatus.value !== 'all') q.status = filterStatus.value
+  if (filterCause.value !== 'all') q.cause = filterCause.value
   if (searchText.value.trim()) q.q = searchText.value.trim()
   return q
 }
@@ -386,6 +391,7 @@ function applyView(query: Record<string, string>): void {
   activeQueue.value = query.queue ?? 'all'
   filterSite.value = query.site ?? 'all'
   filterStatus.value = query.status ?? 'all'
+  filterCause.value = query.cause ?? 'all'
   searchText.value = query.q ?? ''
 }
 
@@ -611,6 +617,18 @@ function exportCsv(): void {
     </div>
 
     <!-- Summary -->
+    <div
+      v-if="filterCause !== 'all'"
+      class="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm"
+    >
+      <span>
+        Причина:
+        <strong class="text-foreground">{{ causeLabel(filterCause) }}</strong>
+      </span>
+      <Button size="sm" variant="ghost" class="h-7 px-2" @click="filterCause = 'all'">
+        Сбросить
+      </Button>
+    </div>
     <div class="flex flex-wrap gap-4 text-sm text-muted-foreground">
       <span
         >Инцидентов: <strong class="text-foreground tabular-nums">{{ summary.count }}</strong></span

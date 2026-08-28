@@ -84,6 +84,7 @@ const decisionQueue = computed(() =>
     .filter((i) => i.hasDowntime && !i.downtimeConfirmed && i.status !== 'CLOSED')
     .slice(0, 6),
 )
+const openRiskIncident = computed(() => decisionQueue.value[0] ?? null)
 
 function fmtMoney(n: number): string {
   return n.toLocaleString('ru-RU')
@@ -99,7 +100,7 @@ function goIncident(id: string): void {
 <template>
   <div class="space-y-4">
     <!-- Первый экран: потери за период -->
-    <Card class="border-primary/30">
+    <Card tone="decision" density="compact" class="page-hero">
       <CardContent class="p-5 space-y-2">
         <div class="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -121,7 +122,7 @@ function goIncident(id: string): void {
               период.
             </p>
           </div>
-          <div class="flex gap-6 text-sm">
+          <div class="flex flex-wrap gap-6 text-sm">
             <div>
               <p class="text-xs text-muted-foreground">Подтверждено расчётов</p>
               <p class="font-bold tabular-nums flex items-center gap-1">
@@ -131,12 +132,19 @@ function goIncident(id: string): void {
             </div>
             <div>
               <p class="text-xs text-muted-foreground flex items-center gap-1">
-                <Hourglass class="size-3.5" /> Предварительно (открытые)
+                <Hourglass class="size-3.5" /> Открытый риск без подтверждённой суммы
               </p>
               <p class="font-bold tabular-nums text-warning">
                 {{ fmtMoney(preliminary.loss) }} ₽ ·
                 {{ ruCount(preliminary.count, ['простой', 'простоя', 'простоев']) }}
               </p>
+              <Button v-if="openRiskIncident" size="sm" variant="outline" class="mt-2" as-child>
+                <RouterLink
+                  :to="{ name: 'incident-details', params: { incidentId: openRiskIncident.id } }"
+                >
+                  Открыть незакрытый контур <ArrowRight class="size-3.5 ml-1" />
+                </RouterLink>
+              </Button>
             </div>
           </div>
         </div>

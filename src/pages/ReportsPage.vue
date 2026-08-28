@@ -30,9 +30,16 @@ import { Download } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useRouter } from 'vue-router'
 import { incidentTypeLabel, causeLabel, CAUSE_CATALOG } from '@/data/generator'
+import { RESPONSIBILITY_ZONE_RU } from '@/data/labels'
 import { METRIC_PASSPORTS } from '@/data/metric-passports'
 import { useTenantScope } from '@/composables/useTenantScope'
-import { impactSeconds, techAvailabilityPct, techUnavailableSeconds } from '@/data/metrics'
+import {
+  confirmedLossRubles,
+  impactSeconds,
+  powerAvailabilityPct,
+  techAvailabilityPct,
+  techUnavailableSeconds,
+} from '@/data/metrics'
 import { BookOpen } from 'lucide-vue-next'
 
 // ACC-033/034: каталог паспортов метрик (Отчёт §10.9) — раскрытый на Отчётах.
@@ -83,18 +90,32 @@ const filteredDowntimes = computed(() =>
   ),
 )
 
+// ACC-023: отчёт показывает только канонические раздельные метрики из metrics.ts.
+// Операционное влияние и техническая недоступность нельзя складывать в общий «простой».
+const reportMetrics = computed(() => {
+  const robotCount = robots.value.filter(
+    (r) =>
+      scopedSiteIds.value.includes(r.siteId) &&
+      (selectedSite.value === 'all' || r.siteId === selectedSite.value),
+  ).length
+  const selectedDowntimes = filteredDowntimes.value
+  return {
+    robotCount,
+    technicalAvailability: techAvailabilityPct(selectedDowntimes, robotCount),
+    powerAvailability: powerAvailabilityPct(selectedDowntimes, robotCount),
+    impactHours: impactSeconds(selectedDowntimes) / 3600,
+    technicalUnavailableHours: techUnavailableSeconds(selectedDowntimes) / 3600,
+    confirmedLoss: confirmedLossRubles(selectedDowntimes),
+  }
+})
+
 const filteredStats = computed(() => {
   const incs = filteredIncidents.value
-  const dts = filteredDowntimes.value.filter((d) => d.confirmationStatus === 'CONFIRMED')
-  const totalDowntime = dts.reduce((s, d) => s + d.accountableDurationSeconds, 0)
-  const totalLoss = dts.reduce((s, d) => s + d.lossRubles, 0)
   const active = incs.filter((i) => i.status !== 'CLOSED').length
   const unclassified = incs.filter(
     (i) => i.causeMaturity === 'NONE' || i.causeCode === 'CA-060',
   ).length
   return {
-    totalDowntime,
-    totalLoss,
     active,
     unclassified,
     total: incs.length,
@@ -146,25 +167,18 @@ const robotStats = computed(() => {
 })
 
 function exportReport(): void {
-  // Единые метрики (ACC-023): доступность — по формуле metrics.ts.
-  const scopedRobotCount = robots.value.filter(
-    (r) =>
-      scopedSiteIds.value.includes(r.siteId) &&
-      (selectedSite.value === 'all' || r.siteId === selectedSite.value),
-  ).length
-  const techAvail = techAvailabilityPct(filteredDowntimes.value, scopedRobotCount)
-  const impactH = impactSeconds(filteredDowntimes.value) / 3600
-  const techH = techUnavailableSeconds(filteredDowntimes.value) / 3600
+  const metrics = reportMetrics.value
   const lines = [
     'ZIMA FleetOps — Управленческий отчёт',
     `Период: последние 30 дней | Объект: ${siteName.value}`,
     `Дата формирования: ${new Date().toLocaleString('ru-RU')}`,
     '',
     '=== СВОДКА ===',
-    `Техническая доступность: ${techAvail.toFixed(1)}% (парк ${scopedRobotCount} × 8 ч × 30 дней)`,
-    `Операционное влияние: ${impactH.toFixed(1)} ч`,
-    `Техническая недоступность: ${techH.toFixed(1)} ч`,
-    `Потери процесса: ${filteredStats.value.totalLoss.toLocaleString('ru-RU')} ₽`,
+    `Техническая доступность: ${metrics.technicalAvailability.toFixed(2)}% (парк ${metrics.robotCount} × 8 ч × 30 дней)`,
+    `Операционная доступность мощности: ${metrics.powerAvailability.toFixed(2)}%`,
+    `Подтверждённое операционное влияние: ${metrics.impactHours.toFixed(1)} ч`,
+    `Техническая недоступность: ${metrics.technicalUnavailableHours.toFixed(1)} ч`,
+    `Подтверждённые потери: ${metrics.confirmedLoss.toLocaleString('ru-RU')} ₽`,
     `Инцидентов: ${filteredStats.value.total} (активных: ${filteredStats.value.active})`,
     `Неклассифицированных: ${filteredStats.value.unclassified} (${filteredStats.value.total > 0 ? ((filteredStats.value.unclassified / filteredStats.value.total) * 100).toFixed(0) : 0}%)`,
     '',
@@ -276,41 +290,37 @@ function openBreakdown(title: string): void {
       >
       <CardContent>
         <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <div
-            class="kpi-clickable border border-border rounded-lg p-3"
-            @click="openBreakdown('Доступность')"
-          >
-            <p class="text-muted-foreground text-xs">Доступность</p>
+          <div class="border border-border rounded-lg p-3">
+            <p class="text-muted-foreground text-xs">Техническая доступность</p>
             <p class="text-xl font-bold tabular-nums">
-              {{ (100 - (filteredStats.totalDowntime / (30 * 24 * 3600)) * 100).toFixed(1) }}%
-            </p>
-          </div>
-          <div
-            class="kpi-clickable border border-border rounded-lg p-3"
-            @click="openBreakdown('Простой')"
-          >
-            <p class="text-muted-foreground text-xs">Простой</p>
-            <p class="text-xl font-bold tabular-nums">
-              {{ (filteredStats.totalDowntime / 3600).toFixed(1) }} ч
-            </p>
-          </div>
-          <div
-            class="kpi-clickable border border-border rounded-lg p-3"
-            @click="openBreakdown('Потери')"
-          >
-            <p class="text-muted-foreground text-xs">Потери</p>
-            <p class="text-xl font-bold tabular-nums">
-              {{ filteredStats.totalLoss.toLocaleString('ru-RU') }} ₽
+              {{ reportMetrics.technicalAvailability.toFixed(2) }}%
             </p>
           </div>
           <div class="border border-border rounded-lg p-3">
-            <p class="text-muted-foreground text-xs">Активные</p>
-            <p class="text-xl font-bold tabular-nums">{{ filteredStats.active }}</p>
+            <p class="text-muted-foreground text-xs">Операционная доступность мощности</p>
+            <p class="text-xl font-bold tabular-nums">
+              {{ reportMetrics.powerAvailability.toFixed(2) }}%
+            </p>
           </div>
           <div class="border border-border rounded-lg p-3">
-            <p class="text-muted-foreground text-xs">Неклассиф.</p>
-            <p class="text-xl font-bold tabular-nums text-warning">
-              {{ filteredStats.unclassified }}
+            <p class="text-muted-foreground text-xs">Подтверждённое операционное влияние</p>
+            <p class="text-xl font-bold tabular-nums">
+              {{ reportMetrics.impactHours.toFixed(1) }} ч
+            </p>
+          </div>
+          <div class="border border-border rounded-lg p-3">
+            <p class="text-muted-foreground text-xs">Техническая недоступность</p>
+            <p class="text-xl font-bold tabular-nums">
+              {{ reportMetrics.technicalUnavailableHours.toFixed(1) }} ч
+            </p>
+          </div>
+          <div
+            class="kpi-clickable border border-border rounded-lg p-3"
+            @click="openBreakdown('Подтверждённые потери')"
+          >
+            <p class="text-muted-foreground text-xs">Подтверждённые потери</p>
+            <p class="text-xl font-bold tabular-nums text-destructive">
+              {{ reportMetrics.confirmedLoss.toLocaleString('ru-RU') }} ₽
             </p>
           </div>
         </div>
@@ -321,14 +331,16 @@ function openBreakdown(title: string): void {
     <Card>
       <CardHeader><CardTitle>Топ причин по потерям</CardTitle></CardHeader>
       <CardContent class="p-0">
-        <Table>
+        <Table class="lg:max-2xl:table-fixed lg:max-2xl:[&_td]:px-2 lg:max-2xl:[&_th]:px-2">
           <TableHeader
             ><TableRow>
-              <TableHead class="py-2 px-4">Причина</TableHead>
-              <TableHead class="py-2 px-4">Зона ответственности</TableHead>
-              <TableHead class="py-2 px-4">Случаев</TableHead>
-              <TableHead class="py-2 px-4">Часов</TableHead>
-              <TableHead class="py-2 px-4">Потери</TableHead>
+              <TableHead class="py-2 px-4 lg:max-2xl:w-[34%]">Причина</TableHead>
+              <TableHead class="py-2 px-4 lg:max-2xl:w-[26%] lg:max-2xl:whitespace-normal"
+                >Зона ответственности</TableHead
+              >
+              <TableHead class="py-2 px-4 lg:max-2xl:w-18">Случаев</TableHead>
+              <TableHead class="py-2 px-4 lg:max-2xl:w-16">Часов</TableHead>
+              <TableHead class="py-2 px-4 lg:max-2xl:w-24">Потери</TableHead>
             </TableRow></TableHeader
           >
           <TableBody>
@@ -336,15 +348,24 @@ function openBreakdown(title: string): void {
               v-for="c in topCauses"
               :key="c.code"
               class="row-interactive cursor-pointer"
-              @click="router.push({ name: 'analytics' })"
+              @click="router.push({ name: 'incidents', query: { cause: c.code } })"
             >
-              <TableCell class="text-sm py-3 px-4">{{ causeLabel(c.code) }}</TableCell>
-              <TableCell class="text-xs py-3 px-4">{{
-                CAUSE_CATALOG[c.code]?.zone ?? '—'
+              <TableCell
+                class="text-sm py-3 px-4 lg:max-2xl:whitespace-normal lg:max-2xl:leading-4"
+                >{{ causeLabel(c.code) }}</TableCell
+              >
+              <TableCell
+                class="text-xs py-3 px-4 lg:max-2xl:whitespace-normal lg:max-2xl:leading-4"
+                :title="RESPONSIBILITY_ZONE_RU[CAUSE_CATALOG[c.code]?.zone ?? 'UNKNOWN']"
+                >{{ RESPONSIBILITY_ZONE_RU[CAUSE_CATALOG[c.code]?.zone ?? 'UNKNOWN'] }}</TableCell
+              >
+              <TableCell class="text-sm tabular-nums py-3 px-4 whitespace-nowrap">{{
+                c.count
               }}</TableCell>
-              <TableCell class="text-sm tabular-nums py-3 px-4">{{ c.count }}</TableCell>
-              <TableCell class="text-sm tabular-nums py-3 px-4">{{ c.hours.toFixed(1) }}</TableCell>
-              <TableCell class="text-sm font-medium tabular-nums py-3 px-4"
+              <TableCell class="text-sm tabular-nums py-3 px-4 whitespace-nowrap">{{
+                c.hours.toFixed(1)
+              }}</TableCell>
+              <TableCell class="text-sm font-medium tabular-nums py-3 px-4 whitespace-nowrap"
                 >{{ c.loss.toLocaleString('ru-RU') }} ₽</TableCell
               >
             </TableRow>

@@ -4,7 +4,7 @@ import { useDemoData } from '@/composables/useDemoData'
 import { useTenantScope } from '@/composables/useTenantScope'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { AlertTriangle, Clock, TrendingDown, Activity, ArrowRight, MapPin } from 'lucide-vue-next'
-import { useRouter } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import { incidentTypeLabel, causeLabel, CAUSE_CATALOG } from '@/data/generator'
 
 const { incidents, downtimes, stats, sites, robots, maintenance } = useDemoData()
@@ -107,10 +107,31 @@ const classificationDetail = computed(() => ({
     (i) => i.causeMaturity === 'NONE' || i.causeCode === 'CA-060',
   ),
 }))
+
+const topDecision = computed(() => stats.value.needsAttention[0] ?? null)
 </script>
 
 <template>
   <div class="space-y-6">
+    <Card v-if="topDecision" tone="decision" density="compact" class="page-hero">
+      <CardContent class="flex flex-wrap items-center justify-between gap-4">
+        <div class="min-w-0">
+          <p class="eyebrow">Следующее управленческое решение</p>
+          <p class="mt-1 text-lg font-semibold">
+            {{ topDecision.incidentNumber }} · {{ topDecision.reason }}
+          </p>
+          <p class="mt-1 text-sm text-muted-foreground">{{ topDecision.detail }}</p>
+        </div>
+        <Button as-child>
+          <RouterLink
+            :to="{ name: 'incident-details', params: { incidentId: topDecision.incidentId } }"
+          >
+            Открыть приоритетный инцидент <ArrowRight class="size-4" />
+          </RouterLink>
+        </Button>
+      </CardContent>
+    </Card>
+
     <!-- KPI cards -->
     <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       <Card class="kpi-clickable" @click="router.push({ name: 'analytics' })">

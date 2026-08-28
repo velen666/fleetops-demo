@@ -160,16 +160,20 @@ function submitRegister(): void {
     <!-- Events table -->
     <Card>
       <CardContent class="p-0">
-        <Table>
+        <Table class="lg:max-2xl:table-fixed lg:max-2xl:[&_td]:px-2 lg:max-2xl:[&_th]:px-2">
           <TableHeader>
             <TableRow>
-              <TableHead class="py-3 px-4">Время</TableHead>
-              <TableHead class="py-3 px-4">Источник</TableHead>
-              <TableHead class="py-3 px-4">Робот</TableHead>
-              <TableHead class="py-3 px-4">Сигнал</TableHead>
-              <TableHead class="py-3 px-4">Что наблюдалось</TableHead>
-              <TableHead class="py-3 px-4">Статус</TableHead>
-              <TableHead class="py-3 px-4">Инцидент</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-20">Время</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:hidden">Источник</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-20">Робот</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-[34%] lg:max-2xl:whitespace-normal"
+                >Сигнал</TableHead
+              >
+              <TableHead class="py-3 px-4 lg:max-2xl:hidden">Что наблюдалось</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-28 lg:max-2xl:whitespace-normal"
+                >Статус</TableHead
+              >
+              <TableHead class="py-3 px-4 lg:max-2xl:w-28">Инцидент</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -185,14 +189,24 @@ function submitRegister(): void {
                   event.timestamp.slice(0, 10)
                 }}</span></TableCell
               >
-              <TableCell class="text-xs py-3 px-4">{{
+              <TableCell class="text-xs py-3 px-4 lg:max-2xl:hidden">{{
                 sourceInstanceLabel(event.source, event.siteId)
               }}</TableCell>
               <TableCell class="text-xs py-3 px-4">{{ robotLabel(event.robotId) }}</TableCell>
-              <TableCell class="text-xs font-mono py-3 px-4">{{ event.rawCode }}</TableCell>
-              <TableCell class="text-xs max-w-xs truncate py-3 px-4">{{
-                event.normalizedType
-              }}</TableCell>
+              <TableCell
+                class="py-3 px-4 lg:max-2xl:max-w-none"
+                :title="`${event.humanInterpretation} · ${event.rawCode}`"
+              >
+                <p class="text-xs truncate">{{ event.humanInterpretation }}</p>
+                <p class="mt-0.5 text-[11px] font-mono text-muted-foreground truncate">
+                  {{ event.rawCode }}
+                </p>
+              </TableCell>
+              <TableCell
+                class="text-xs max-w-xs truncate py-3 px-4 lg:max-2xl:hidden"
+                :title="event.normalizedType"
+                >{{ event.normalizedType }}</TableCell
+              >
               <TableCell class="py-3 px-4">
                 <span
                   class="text-xs rounded px-2 py-1 inline-flex items-center gap-1"
@@ -227,11 +241,12 @@ function submitRegister(): void {
               class="size-5"
               :class="statusColor(selectedEvent?.processingStatus ?? '')"
             />
-            {{ selectedEvent?.rawCode }}
+            {{ selectedEvent?.humanInterpretation }}
           </DialogTitle>
-          <DialogDescription>{{
-            EVENT_STATUS_RU[selectedEvent?.processingStatus ?? '']
-          }}</DialogDescription>
+          <DialogDescription>
+            Технический код: {{ selectedEvent?.rawCode }} ·
+            {{ EVENT_STATUS_RU[selectedEvent?.processingStatus ?? ''] }}
+          </DialogDescription>
         </DialogHeader>
 
         <div v-if="selectedEvent" class="space-y-5">

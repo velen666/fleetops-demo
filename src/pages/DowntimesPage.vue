@@ -554,20 +554,25 @@ function exportCsv(): void {
 
     <Card>
       <CardContent class="p-0 overflow-x-auto">
-        <Table>
+        <Table class="lg:max-2xl:table-fixed lg:max-2xl:[&_td]:px-2 lg:max-2xl:[&_th]:px-2">
           <TableHeader>
             <TableRow>
-              <TableHead>Инцидент</TableHead>
-              <TableHead>Тип учёта</TableHead>
-              <TableHead>Объект · зона</TableHead>
-              <TableHead>Робот</TableHead>
-              <TableHead>Начало</TableHead>
-              <TableHead>Окончание</TableHead>
-              <TableHead>Длительность</TableHead>
-              <TableHead>Характер</TableHead>
-              <TableHead>Причина</TableHead>
-              <TableHead>Статус</TableHead>
-              <TableHead>Формула потерь</TableHead>
+              <TableHead class="lg:max-2xl:w-24">Инцидент</TableHead>
+              <TableHead class="lg:max-2xl:w-28 lg:max-2xl:whitespace-normal">Тип учёта</TableHead>
+              <TableHead class="lg:max-2xl:w-[24%]">Объект · зона</TableHead>
+              <TableHead class="lg:max-2xl:hidden">Робот</TableHead>
+              <TableHead class="lg:max-2xl:hidden">Начало</TableHead>
+              <TableHead class="lg:max-2xl:hidden">Окончание</TableHead>
+              <TableHead class="lg:max-2xl:w-20">Длительность</TableHead>
+              <TableHead class="lg:max-2xl:hidden">Характер</TableHead>
+              <TableHead class="lg:max-2xl:hidden">Причина</TableHead>
+              <TableHead class="lg:max-xl:hidden lg:max-2xl:w-28 lg:max-2xl:whitespace-normal"
+                >Статус</TableHead
+              >
+              <TableHead class="lg:max-2xl:w-26">
+                <span class="lg:max-2xl:hidden">Формула потерь</span>
+                <span class="hidden lg:max-2xl:inline">Потери</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -585,7 +590,7 @@ function exportCsv(): void {
               }}</TableCell>
               <TableCell class="py-2 px-3">
                 <span
-                  class="text-xs rounded px-1.5 py-0.5"
+                  class="text-xs rounded px-1.5 py-0.5 lg:max-2xl:whitespace-normal"
                   :class="
                     dt.intervalType === 'OPERATIONAL_IMPACT'
                       ? 'bg-destructive/15 text-destructive'
@@ -598,15 +603,19 @@ function exportCsv(): void {
                   }}</span
                 >
               </TableCell>
-              <TableCell class="text-xs py-2 px-3"
+              <TableCell
+                class="text-xs py-2 px-3 lg:max-2xl:truncate"
+                :title="`${siteName(dt.siteId)}${dt.zoneName ? ` · ${dt.zoneName}` : ''}`"
                 >{{ siteName(dt.siteId)
                 }}<span v-if="dt.zoneName" class="text-muted-foreground"> · {{ dt.zoneName }}</span>
               </TableCell>
-              <TableCell class="text-xs py-2 px-3">{{ robotName(dt.robotId) }}</TableCell>
-              <TableCell class="text-xs font-mono tabular-nums py-2 px-3">{{
+              <TableCell class="text-xs py-2 px-3 lg:max-2xl:hidden">{{
+                robotName(dt.robotId)
+              }}</TableCell>
+              <TableCell class="text-xs font-mono tabular-nums py-2 px-3 lg:max-2xl:hidden">{{
                 fmtTime(dt.startedAt)
               }}</TableCell>
-              <TableCell class="text-xs font-mono tabular-nums py-2 px-3">
+              <TableCell class="text-xs font-mono tabular-nums py-2 px-3 lg:max-2xl:hidden">
                 <span v-if="dt.endedAt">{{ fmtTime(dt.endedAt) }}</span>
                 <span v-else class="text-warning">продолжается</span>
               </TableCell>
@@ -617,13 +626,13 @@ function exportCsv(): void {
                 </template>
                 <template v-else>{{ fmtDur(dt.accountableDurationSeconds) }}</template>
               </TableCell>
-              <TableCell class="text-xs text-muted-foreground py-2 px-3">{{
+              <TableCell class="text-xs text-muted-foreground py-2 px-3 lg:max-2xl:hidden">{{
                 DOWNTIME_KIND_RU[dt.kind]
               }}</TableCell>
-              <TableCell class="text-xs py-2 px-3 max-w-[180px]">
+              <TableCell class="text-xs py-2 px-3 max-w-[180px] lg:max-2xl:hidden">
                 <span class="truncate block">{{ causeLabel(causeOf(dt)) }}</span>
               </TableCell>
-              <TableCell class="py-2 px-3">
+              <TableCell class="py-2 px-3 lg:max-xl:hidden">
                 <span
                   class="text-xs rounded px-1.5 py-0.5"
                   :class="DOWNTIME_STATUS_CLASS[dt.confirmationStatus]"
@@ -631,17 +640,23 @@ function exportCsv(): void {
                 >
               </TableCell>
               <TableCell class="text-xs tabular-nums py-2 px-3 whitespace-nowrap">
-                <span v-if="dt.lossRubles > 0" class="font-medium"
+                <span class="hidden lg:max-2xl:inline font-medium">
+                  <template v-if="dt.lossRubles > 0"
+                    >{{ dt.lossRubles.toLocaleString('ru-RU') }} ₽</template
+                  >
+                  <template v-else>—</template>
+                </span>
+                <span v-if="dt.lossRubles > 0" class="font-medium lg:max-2xl:hidden"
                   >{{ (dt.accountableDurationSeconds / 3600).toFixed(2) }} ч ×
                   {{ dt.ratePerHour.toLocaleString('ru-RU') }} ₽/ч =
                   {{ dt.lossRubles.toLocaleString('ru-RU') }} ₽</span
                 >
                 <span
                   v-else-if="dt.intervalType === 'TECHNICAL_UNAVAILABLE'"
-                  class="text-muted-foreground"
+                  class="text-muted-foreground lg:max-2xl:hidden"
                   >без начисления потерь</span
                 >
-                <span v-else class="text-muted-foreground">—</span>
+                <span v-else class="text-muted-foreground lg:max-2xl:hidden">—</span>
               </TableCell>
             </TableRow>
           </TableBody>

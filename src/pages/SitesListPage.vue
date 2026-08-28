@@ -154,18 +154,20 @@ function fmtDate(iso: string): string {
     <!-- Table -->
     <Card>
       <CardContent class="p-0">
-        <Table>
+        <Table class="lg:max-2xl:table-fixed lg:max-2xl:[&_td]:px-2 lg:max-2xl:[&_th]:px-2">
           <TableHeader>
             <TableRow>
-              <TableHead class="py-3 px-4">Объект</TableHead>
-              <TableHead class="py-3 px-4">Адрес</TableHead>
-              <TableHead class="py-3 px-4">Парк</TableHead>
-              <TableHead class="py-3 px-4">Готовность</TableHead>
-              <TableHead class="py-3 px-4">Доступность</TableHead>
-              <TableHead class="py-3 px-4">Инцидентов</TableHead>
-              <TableHead class="py-3 px-4">Простой</TableHead>
-              <TableHead class="py-3 px-4">Ставка</TableHead>
-              <TableHead class="py-3 px-4">Потери</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-[32%]">Объект</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:hidden">Адрес</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-24">Парк</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:hidden">Готовность</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-24">Доступность</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-20 lg:max-2xl:whitespace-normal"
+                >Инцидентов</TableHead
+              >
+              <TableHead class="py-3 px-4 lg:max-2xl:hidden">Простой</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:hidden">Ставка</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-26">Потери</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -175,15 +177,17 @@ function fmtDate(iso: string): string {
               class="row-interactive cursor-pointer"
               @click="router.push({ name: 'site-details', params: { siteId: site.id } })"
             >
-              <TableCell class="font-medium text-sm py-3 px-4">{{ site.name }}</TableCell>
-              <TableCell class="text-xs py-3 px-4">{{ site.address }}</TableCell>
+              <TableCell class="font-medium text-sm py-3 px-4" :title="site.name">{{
+                site.name
+              }}</TableCell>
+              <TableCell class="text-xs py-3 px-4 lg:max-2xl:hidden">{{ site.address }}</TableCell>
               <TableCell class="text-xs py-3 px-4">
                 {{ siteMetrics.get(site.id)?.robotCount ?? 0 }} роботов
                 <span class="text-muted-foreground"
                   >({{ siteMetrics.get(site.id)?.activeCount ?? 0 }} акт.)</span
                 >
               </TableCell>
-              <TableCell class="text-sm tabular-nums py-3 px-4">
+              <TableCell class="text-sm tabular-nums py-3 px-4 lg:max-2xl:hidden">
                 {{ siteMetrics.get(site.id)?.activeCount ?? 0 }}/{{
                   siteMetrics.get(site.id)?.robotCount ?? 0
                 }}
@@ -197,10 +201,10 @@ function fmtDate(iso: string): string {
               <TableCell class="text-sm tabular-nums py-3 px-4">{{
                 siteMetrics.get(site.id)?.incCount ?? 0
               }}</TableCell>
-              <TableCell class="text-sm tabular-nums py-3 px-4"
+              <TableCell class="text-sm tabular-nums py-3 px-4 lg:max-2xl:hidden"
                 >{{ ((siteMetrics.get(site.id)?.dtSeconds ?? 0) / 3600).toFixed(1) }} ч</TableCell
               >
-              <TableCell class="text-sm tabular-nums py-3 px-4"
+              <TableCell class="text-sm tabular-nums py-3 px-4 lg:max-2xl:hidden"
                 >{{ (siteMetrics.get(site.id)?.rate ?? 0).toLocaleString('ru-RU') }} ₽/ч</TableCell
               >
               <TableCell class="text-sm font-medium tabular-nums py-3 px-4 text-destructive"

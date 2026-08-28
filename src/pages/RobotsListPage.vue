@@ -214,18 +214,22 @@ function availClass(v: number): string {
     <!-- Table -->
     <Card>
       <CardContent class="p-0">
-        <Table>
+        <Table class="lg:max-2xl:table-fixed lg:max-2xl:[&_td]:px-2 lg:max-2xl:[&_th]:px-2">
           <TableHeader>
             <TableRow>
-              <TableHead class="py-3 px-4">Робот</TableHead>
-              <TableHead class="py-3 px-4">Модель</TableHead>
-              <TableHead class="py-3 px-4">Вендор</TableHead>
-              <TableHead class="py-3 px-4">Объект</TableHead>
-              <TableHead class="py-3 px-4">Состояние парка</TableHead>
-              <TableHead class="py-3 px-4">Доступность</TableHead>
-              <TableHead class="py-3 px-4">Инцидентов</TableHead>
-              <TableHead class="py-3 px-4">Простой</TableHead>
-              <TableHead class="py-3 px-4">Потери</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-22">Робот</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:hidden">Модель</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:hidden">Вендор</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-20">Объект</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-[28%] lg:max-2xl:whitespace-normal"
+                >Состояние парка</TableHead
+              >
+              <TableHead class="py-3 px-4 lg:max-2xl:w-22">Доступность</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-20 lg:max-2xl:whitespace-normal"
+                >Инцидентов</TableHead
+              >
+              <TableHead class="py-3 px-4 lg:max-2xl:hidden">Простой</TableHead>
+              <TableHead class="py-3 px-4 lg:max-2xl:w-25">Потери</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -235,13 +239,17 @@ function availClass(v: number): string {
               class="row-interactive cursor-pointer"
               @click="router.push({ name: 'robot-details', params: { robotId: robot.id } })"
             >
-              <TableCell class="font-medium text-sm py-3 px-4">{{ robot.name }}</TableCell>
-              <TableCell class="text-xs py-3 px-4">{{ robot.model }}</TableCell>
-              <TableCell class="text-xs py-3 px-4">{{ robot.vendor }}</TableCell>
-              <TableCell class="text-xs py-3 px-4">{{ siteName(robot.siteId) }}</TableCell>
+              <TableCell class="font-medium text-sm py-3 px-4" :title="robot.name">{{
+                robot.name
+              }}</TableCell>
+              <TableCell class="text-xs py-3 px-4 lg:max-2xl:hidden">{{ robot.model }}</TableCell>
+              <TableCell class="text-xs py-3 px-4 lg:max-2xl:hidden">{{ robot.vendor }}</TableCell>
+              <TableCell class="text-xs py-3 px-4" :title="siteName(robot.siteId)">{{
+                siteName(robot.siteId)
+              }}</TableCell>
               <TableCell class="py-3 px-4">
                 <span
-                  class="text-xs rounded px-1.5 py-0.5"
+                  class="text-xs rounded px-1.5 py-0.5 lg:max-2xl:inline-flex lg:max-2xl:w-full lg:max-2xl:whitespace-normal lg:max-2xl:leading-4"
                   :class="FLEET_STATE_CLASS[robot.fleetState]"
                   >{{ FLEET_STATE_RU[robot.fleetState] }}</span
                 >
@@ -255,7 +263,7 @@ function availClass(v: number): string {
               <TableCell class="text-sm tabular-nums py-3 px-4">{{
                 robotMetricsMap.get(robot.id)?.incCount ?? 0
               }}</TableCell>
-              <TableCell class="text-sm tabular-nums py-3 px-4"
+              <TableCell class="text-sm tabular-nums py-3 px-4 lg:max-2xl:hidden"
                 >{{
                   (
                     (robotMetricsMap.get(robot.id)?.impact ?? 0) / 3600 +

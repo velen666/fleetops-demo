@@ -658,10 +658,7 @@ function fmtMoney(n: number): string {
             variant="ghost"
             class="card-interactive h-auto min-h-11 w-full rounded-lg border border-border p-3 text-left"
           >
-            <RouterLink
-              :to="{ name: 'analytics', query: { cause: p.code, view: 'site' } }"
-              class="block"
-            >
+            <RouterLink :to="{ name: 'incidents', query: { cause: p.code } }" class="block">
               <span class="flex items-center justify-between gap-3">
                 <span>
                   <span class="block text-sm font-medium">{{ p.name }}</span>

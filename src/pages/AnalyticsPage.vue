@@ -965,17 +965,17 @@ function exportBreakdownCsv(): void {
           >
         </div>
         <div class="overflow-x-auto max-h-[480px] overflow-y-auto">
-          <Table>
+          <Table class="lg:max-2xl:table-fixed lg:max-2xl:[&_td]:px-2 lg:max-2xl:[&_th]:px-2">
             <TableHeader
               ><TableRow>
-                <TableHead class="py-2 px-4">Инцидент</TableHead>
-                <TableHead class="py-2 px-4">Объект · зона</TableHead>
-                <TableHead class="py-2 px-4">Робот</TableHead>
-                <TableHead class="py-2 px-4">Причина</TableHead>
-                <TableHead class="py-2 px-4">Простой</TableHead>
-                <TableHead class="py-2 px-4">Часы</TableHead>
-                <TableHead class="py-2 px-4">Ставка</TableHead>
-                <TableHead class="py-2 px-4">Сумма</TableHead>
+                <TableHead class="py-2 px-4 lg:max-2xl:w-24">Инцидент</TableHead>
+                <TableHead class="py-2 px-4 lg:max-2xl:w-[26%]">Объект · зона</TableHead>
+                <TableHead class="py-2 px-4 lg:max-2xl:hidden">Робот</TableHead>
+                <TableHead class="py-2 px-4 lg:max-2xl:w-[31%]">Причина</TableHead>
+                <TableHead class="py-2 px-4 lg:max-2xl:hidden">Простой</TableHead>
+                <TableHead class="py-2 px-4 lg:max-2xl:w-18">Часы</TableHead>
+                <TableHead class="py-2 px-4 lg:max-2xl:hidden">Ставка</TableHead>
+                <TableHead class="py-2 px-4 lg:max-2xl:w-24">Сумма</TableHead>
               </TableRow></TableHeader
             >
             <TableBody>
@@ -991,28 +991,32 @@ function exportBreakdownCsv(): void {
                 <TableCell class="text-xs text-primary py-2 px-4">{{
                   row.inc?.incidentNumber ?? row.downtime.incidentId
                 }}</TableCell>
-                <TableCell class="text-xs py-2 px-4"
+                <TableCell
+                  class="text-xs py-2 px-4 lg:max-2xl:truncate"
+                  :title="`${siteName(row.downtime.siteId)}${row.downtime.zoneName ? ` · ${row.downtime.zoneName}` : ''}`"
                   >{{ siteName(row.downtime.siteId)
                   }}<span v-if="row.downtime.zoneName" class="text-muted-foreground">
                     · {{ row.downtime.zoneName }}</span
                   ></TableCell
                 >
-                <TableCell class="text-xs py-2 px-4">{{
+                <TableCell class="text-xs py-2 px-4 lg:max-2xl:hidden">{{
                   robotName(row.downtime.robotId)
                 }}</TableCell>
-                <TableCell class="text-xs py-2 px-4 max-w-[200px]"
+                <TableCell
+                  class="text-xs py-2 px-4 max-w-[200px] lg:max-2xl:max-w-none"
+                  :title="causeLabel(row.inc?.causeCode ?? null)"
                   ><span class="truncate block">{{
                     causeLabel(row.inc?.causeCode ?? null)
                   }}</span></TableCell
                 >
-                <TableCell class="text-xs font-mono tabular-nums py-2 px-4"
+                <TableCell class="text-xs font-mono tabular-nums py-2 px-4 lg:max-2xl:hidden"
                   >{{ row.downtime.startedAt.slice(0, 10) }} →
                   {{ row.downtime.endedAt?.slice(0, 10) ?? '…' }}</TableCell
                 >
                 <TableCell class="text-xs tabular-nums py-2 px-4">{{
                   row.hours.toFixed(2)
                 }}</TableCell>
-                <TableCell class="text-xs tabular-nums py-2 px-4"
+                <TableCell class="text-xs tabular-nums py-2 px-4 lg:max-2xl:hidden"
                   >{{ row.downtime.ratePerHour.toLocaleString('ru-RU') }} ₽/ч</TableCell
                 >
                 <TableCell class="text-xs font-medium tabular-nums py-2 px-4"

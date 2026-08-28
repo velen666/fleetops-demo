@@ -229,6 +229,11 @@ const decisionQueue = computed(() =>
 
 /** Ведущее решение остаётся в hero: маршрут портфель → конкретный инцидент. */
 const priorityDecision = computed(() => decisionQueue.value[0] ?? null)
+const prioritySiteName = computed(
+  () =>
+    scopedSites.value.find((site) => site.id === priorityDecision.value?.incident.siteId)?.name ??
+    'объект не определён',
+)
 
 function goSite(id: string): void {
   router.push({ name: 'site-details', params: { siteId: id } })
@@ -297,20 +302,59 @@ const VERDICT_RU: Record<SiteCard['verdict'], string> = {
             </div>
           </div>
         </div>
-        <div class="grid gap-3 border-t border-border/60 pt-4 lg:grid-cols-[minmax(0,1fr)_auto]">
-          <div v-if="priorityDecision" class="min-w-0">
-            <p class="eyebrow">Приоритет в очереди</p>
+        <div class="grid gap-3 border-t border-border/60 pt-4 lg:grid-cols-2">
+          <div
+            v-if="portfolioVerdict.worst"
+            class="rounded-xl border border-border/70 bg-background/35 p-4"
+          >
+            <p class="eyebrow">Максимальный финансовый риск</p>
+            <p class="mt-1 text-sm font-semibold">{{ portfolioVerdict.worst.name }}</p>
+            <p class="mt-1 text-xs leading-5 text-muted-foreground">
+              {{ fmtMoney(portfolioVerdict.worst.loss) }} ₽ подтверждённых потерь ·
+              {{
+                ruCount(portfolioVerdict.worst.activeIncidents, [
+                  'активный инцидент',
+                  'активных инцидента',
+                  'активных инцидентов',
+                ])
+              }}
+            </p>
+            <Button
+              class="mt-3"
+              size="sm"
+              variant="outline"
+              @click="goSite(portfolioVerdict.worst.id)"
+            >
+              Открыть объект
+            </Button>
+          </div>
+          <div
+            v-if="priorityDecision"
+            class="min-w-0 rounded-xl border border-primary/30 bg-primary/5 p-4"
+          >
+            <p class="eyebrow">Следующее операционное действие</p>
             <p class="mt-1 text-sm font-semibold">
               {{ priorityDecision.incident.incidentNumber }} · {{ priorityDecision.step?.label }}
             </p>
+            <p class="mt-1 text-xs text-muted-foreground">
+              {{ prioritySiteName }} · ответственный:
+              {{ priorityDecision.step?.owner ?? 'не назначен' }}
+            </p>
             <p
-              class="mt-1 text-xs leading-5 text-muted-foreground sm:truncate lg:overflow-visible lg:text-clip lg:whitespace-normal lg:text-pretty"
+              class="mt-2 text-xs leading-5 text-muted-foreground sm:truncate lg:overflow-visible lg:text-clip lg:whitespace-normal lg:text-pretty"
             >
               {{ priorityDecision.incident.description }}
             </p>
-            <p class="mt-1 text-xs text-muted-foreground">
-              Ответственный: {{ priorityDecision.step?.owner ?? 'не назначен' }}
-            </p>
+            <Button class="mt-3" size="sm" as-child>
+              <RouterLink
+                :to="{
+                  name: 'incident-details',
+                  params: { incidentId: priorityDecision.incident.id },
+                }"
+              >
+                Открыть инцидент <ArrowRight class="size-4" />
+              </RouterLink>
+            </Button>
           </div>
           <p v-else class="self-center text-xs text-muted-foreground">
             Контур: MTTR {{ fleetKpis.mttrHours.toFixed(1) }} ч · сервисный бэклог
@@ -323,25 +367,6 @@ const VERDICT_RU: Record<SiteCard['verdict'], string> = {
               ])
             }}
           </p>
-          <div class="flex flex-wrap items-center gap-2">
-            <Button v-if="priorityDecision" as-child>
-              <RouterLink
-                :to="{
-                  name: 'incident-details',
-                  params: { incidentId: priorityDecision.incident.id },
-                }"
-              >
-                Открыть инцидент <ArrowRight class="size-4" />
-              </RouterLink>
-            </Button>
-            <Button
-              v-if="portfolioVerdict.worst"
-              variant="outline"
-              @click="goSite(portfolioVerdict.worst.id)"
-            >
-              Открыть объект
-            </Button>
-          </div>
         </div>
       </CardContent>
     </Card>
