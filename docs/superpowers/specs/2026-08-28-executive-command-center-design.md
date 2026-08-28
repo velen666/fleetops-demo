@@ -50,13 +50,13 @@ Data-dense views retain their detailed evidence, but their first screen will sur
 
 ## Component boundaries
 
-| Unit | Responsibility | Dependencies |
-| --- | --- | --- |
-| CSS tokens and utility classes | Theme-consistent surface, motion and state treatment | Existing L1–L3 tokens only |
-| `Card` and `Button` variants | Consistent elevation, density, action affordance | shadcn-vue primitives, class variance |
-| `ChartCard` | Theme-aware chart presentation | CSS custom properties, existing Chart.js data/options |
-| `DashboardLayout` | Navigation, role/presentation context and bounded workspace | Router, active role, UI button |
-| Page-level decision modules | Assemble existing computed data into decision + evidence sequence | Existing page composables and routes |
+| Unit                           | Responsibility                                                    | Dependencies                                          |
+| ------------------------------ | ----------------------------------------------------------------- | ----------------------------------------------------- |
+| CSS tokens and utility classes | Theme-consistent surface, motion and state treatment              | Existing L1–L3 tokens only                            |
+| `Card` and `Button` variants   | Consistent elevation, density, action affordance                  | shadcn-vue primitives, class variance                 |
+| `ChartCard`                    | Theme-aware chart presentation                                    | CSS custom properties, existing Chart.js data/options |
+| `DashboardLayout`              | Navigation, role/presentation context and bounded workspace       | Router, active role, UI button                        |
+| Page-level decision modules    | Assemble existing computed data into decision + evidence sequence | Existing page composables and routes                  |
 
 No presentation component may calculate availability, downtime, money or permission outcomes; it receives already-defined values from the current pages/store.
 

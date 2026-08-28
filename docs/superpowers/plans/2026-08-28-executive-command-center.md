@@ -307,7 +307,11 @@ npm run build
 
 Expected: every command exits successfully.
 
-- [ ] **Step 2: Run top-level acceptance suite**
+Result: lint, type-check, tests and production build pass; formatting of every file changed by this
+package passes. The repository-wide `format:check` remains blocked by 44 pre-existing, unrelated
+files, which are intentionally not mechanically rewritten as part of this presentation change.
+
+- [x] **Step 2: Run top-level acceptance suite**
 
 ```powershell
 npx playwright test
@@ -315,11 +319,11 @@ npx playwright test
 
 Expected: the suite passes; failure blocks completion.
 
-- [ ] **Step 3: Inspect visible desktop routes**
+- [x] **Step 3: Inspect visible desktop routes**
 
 Start Vite on port 5180 and inspect Portfolio, My Site and INC-2026-0001. Confirm hero readability, glass only on top-level surfaces, keyboard focus on primary drill-down and recovery rail accuracy.
 
-- [ ] **Step 4: Scope and diff review**
+- [x] **Step 4: Scope and diff review**
 
 ```powershell
 git diff --check
@@ -329,9 +333,13 @@ git status --short
 
 Expected: no whitespace errors; only planned presentation/docs files changed; worktree clean after final commit.
 
-- [ ] **Step 5: Commit a verification-driven correction only if made**
+- [x] **Step 5: Commit verification-driven corrections**
 
 ```powershell
 git add DESIGN.md AGENTS.md index.html src/assets/styles/style.css src/components/ui/card/Card.vue src/components/ui/button/index.ts src/components/ChartCard.vue src/layouts/DashboardLayout.vue src/pages/PortfolioPage.vue src/pages/MySitePage.vue src/pages/AnalyticsPage.vue src/pages/IncidentDetailsPage.vue
 git commit -m "demo: polish executive command center presentation"
 ```
+
+Corrected from independent UX/visual review: mobile drawer navigation, semantic zone and evidence
+drill-downs, queue prioritisation, complete-service-action CTA, status token usage, and mounted
+chart theme refresh.

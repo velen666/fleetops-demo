@@ -14,8 +14,8 @@ export const INCIDENT_STATUS_RU: Record<string, string> = {
 export const INCIDENT_STATUS_CLASS: Record<string, string> = {
   OPEN: 'bg-warning/15 text-warning',
   IN_PROGRESS: 'bg-primary/15 text-primary',
-  WAITING: 'bg-orange-500/15 text-orange-500',
-  READY_TO_CLOSE: 'bg-cyan-500/15 text-cyan-500',
+  WAITING: 'bg-warning/15 text-warning',
+  READY_TO_CLOSE: 'bg-primary/15 text-primary',
   CLOSED: 'bg-success/15 text-success',
 }
 
@@ -45,7 +45,7 @@ export const DOWNTIME_STATUS_CLASS: Record<string, string> = {
   PROPOSED: 'bg-warning/15 text-warning',
   PENDING_CONFIRMATION: 'bg-warning/15 text-warning',
   CONFIRMED: 'bg-success/15 text-success',
-  ADJUSTED: 'bg-cyan-500/15 text-cyan-500',
+  ADJUSTED: 'bg-primary/15 text-primary',
   REJECTED: 'bg-destructive/15 text-destructive',
 }
 
@@ -70,13 +70,13 @@ export const FLEET_STATE_RU: Record<string, string> = {
 
 export const FLEET_STATE_CLASS: Record<string, string> = {
   WORKING: 'bg-success/15 text-success',
-  RESERVE: 'bg-cyan-500/15 text-cyan-500',
+  RESERVE: 'bg-primary/15 text-primary',
   ASSIGNED_REPLACE: 'bg-primary/15 text-primary',
   CHARGING: 'bg-muted text-muted-foreground',
   EMERGENCY_STOP: 'bg-destructive/15 text-destructive',
   DIAGNOSTICS: 'bg-warning/15 text-warning',
-  AWAITING_REPAIR: 'bg-orange-500/15 text-orange-500',
-  IN_REPAIR: 'bg-orange-500/15 text-orange-500',
+  AWAITING_REPAIR: 'bg-warning/15 text-warning',
+  IN_REPAIR: 'bg-warning/15 text-warning',
   TEST_RUN: 'bg-primary/15 text-primary',
   RETURNED_TO_PARK: 'bg-success/15 text-success',
 }

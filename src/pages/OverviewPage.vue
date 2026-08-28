@@ -161,7 +161,7 @@ const classificationDetail = computed(() => ({
               <p class="text-2xl font-bold tabular-nums">{{ stats.activeIncidents }}</p>
               <p class="text-xs text-muted-foreground mt-0.5">требуют внимания</p>
             </div>
-            <AlertTriangle class="size-8 text-orange-500" />
+            <AlertTriangle class="size-8 text-warning" />
           </div>
         </CardContent>
       </Card>
@@ -215,10 +215,7 @@ const classificationDetail = computed(() => ({
                 <td class="py-2.5 pr-4 tabular-nums" :class="s.service > 0 ? 'text-warning' : ''">
                   {{ s.service }}
                 </td>
-                <td
-                  class="py-2.5 pr-4 tabular-nums"
-                  :class="s.activeInc > 0 ? 'text-orange-500' : ''"
-                >
+                <td class="py-2.5 pr-4 tabular-nums" :class="s.activeInc > 0 ? 'text-warning' : ''">
                   {{ s.activeInc }}
                 </td>
                 <td class="py-2.5 pr-4 tabular-nums">{{ s.backlog }}</td>

@@ -1,10 +1,18 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import { useDemoData } from '@/composables/useDemoData'
 import { useAuthStore } from '@/stores/auth'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { FLEET_STATE_RU, FLEET_STATE_CLASS, MAINTENANCE_STATUS_RU } from '@/data/labels'
 import { CAUSE_CATALOG, MISSION_STATS } from '@/data/generator'
 import {
@@ -50,6 +58,17 @@ const zoneRows = computed(() =>
     }
   }),
 )
+
+function zoneRoute(zoneCode: string) {
+  return { name: 'zone-details', params: { siteId: siteId.value, zoneCode } }
+}
+
+const deficitRoute = computed(() => {
+  const deficit = zoneRows.value.find((zone) => zone.deficit > 0)
+  return deficit
+    ? zoneRoute(deficit.code)
+    : { name: 'site-details', params: { siteId: siteId.value } }
+})
 
 const parkStates = computed(() => {
   const order = [
@@ -152,7 +171,7 @@ const attention = computed(() => {
     items.push({
       text: `Зона ${z.code}: дефицит мощности ${z.deficit} ед.`,
       sub: `Требуется ${z.requiredCapacity}, работает ${z.actual}`,
-      to: `/sites/${siteId.value}`,
+      to: `/sites/${siteId.value}/zones/${z.code}`,
     })
   if (reserveState.value.below)
     items.push({
@@ -288,7 +307,6 @@ function fmtMoney(n: number): string {
           </p>
           <Button
             v-if="operationsPulse.attention"
-            size="sm"
             @click="router.push(operationsPulse.attention.to)"
           >
             Открыть приоритет <ArrowRight class="size-4" />
@@ -299,57 +317,69 @@ function fmtMoney(n: number): string {
 
     <!-- Ключевые показатели (§8.1; title = определение, период) -->
     <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
-      <Card
-        class="kpi-clickable"
+      <Button
+        as-child
+        variant="outline"
+        class="card-data kpi-clickable h-auto min-h-30 flex-col items-stretch justify-center p-0 text-left"
         :class="kpi.deficitZones > 0 ? 'border-destructive/40' : ''"
         title="Зоны, где работающих меньше требуемой мощности. Период: сейчас."
-        @click="router.push(`/sites/${siteId}`)"
       >
-        <CardContent class="p-4">
-          <p class="text-sm text-muted-foreground">Зоны с дефицитом</p>
-          <p
-            class="text-2xl font-bold tabular-nums"
-            :class="kpi.deficitZones > 0 ? 'text-destructive' : ''"
-          >
-            {{ kpi.deficitZones }}
-          </p>
-        </CardContent>
-      </Card>
-      <Card
-        class="kpi-clickable"
+        <RouterLink :to="deficitRoute">
+          <CardContent class="p-4">
+            <p class="text-sm text-muted-foreground">Зоны с дефицитом</p>
+            <p
+              class="text-2xl font-bold tabular-nums"
+              :class="kpi.deficitZones > 0 ? 'text-destructive' : ''"
+            >
+              {{ kpi.deficitZones }}
+            </p>
+          </CardContent>
+        </RouterLink>
+      </Button>
+      <Button
+        as-child
+        variant="outline"
+        class="card-data kpi-clickable h-auto min-h-30 flex-col items-stretch justify-center p-0 text-left"
         title="Роботы в состоянии «Работает в зоне». Период: сейчас."
-        @click="router.push(`/sites/${siteId}`)"
       >
-        <CardContent class="p-4">
-          <p class="text-sm text-muted-foreground">Работают</p>
-          <p class="text-2xl font-bold tabular-nums text-success">{{ kpi.working }}</p>
-        </CardContent>
-      </Card>
-      <Card
-        class="kpi-clickable"
+        <RouterLink :to="{ name: 'site-details', params: { siteId } }">
+          <CardContent class="p-4">
+            <p class="text-sm text-muted-foreground">Работают</p>
+            <p class="text-2xl font-bold tabular-nums text-success">{{ kpi.working }}</p>
+          </CardContent>
+        </RouterLink>
+      </Button>
+      <Button
+        as-child
+        variant="outline"
+        class="card-data kpi-clickable h-auto min-h-30 flex-col items-stretch justify-center p-0 text-left"
         :title="`Свободный резерв против норматива (${reserveState.norm}). Ниже норматива — риск устойчивости, не потеря.`"
-        @click="router.push(`/sites/${siteId}`)"
       >
-        <CardContent class="p-4">
-          <p class="text-sm text-muted-foreground">Резерв</p>
-          <p
-            class="text-2xl font-bold tabular-nums"
-            :class="reserveState.below ? 'text-warning' : 'text-primary'"
-          >
-            {{ kpi.reserve }} / {{ reserveState.norm }}
-          </p>
-        </CardContent>
-      </Card>
-      <Card
-        class="kpi-clickable"
+        <RouterLink :to="{ name: 'site-details', params: { siteId } }">
+          <CardContent class="p-4">
+            <p class="text-sm text-muted-foreground">Резерв</p>
+            <p
+              class="text-2xl font-bold tabular-nums"
+              :class="reserveState.below ? 'text-warning' : 'text-primary'"
+            >
+              {{ kpi.reserve }} / {{ reserveState.norm }}
+            </p>
+          </CardContent>
+        </RouterLink>
+      </Button>
+      <Button
+        as-child
+        variant="outline"
+        class="card-data kpi-clickable h-auto min-h-30 flex-col items-stretch justify-center p-0 text-left"
         title="Диагностика, ожидание ремонта/запчастей, ремонт, аварийная остановка. Период: сейчас."
-        @click="router.push('/maintenance')"
       >
-        <CardContent class="p-4">
-          <p class="text-sm text-muted-foreground">Сервис / авария</p>
-          <p class="text-2xl font-bold tabular-nums text-warning">{{ kpi.service }}</p>
-        </CardContent>
-      </Card>
+        <RouterLink :to="{ name: 'maintenance' }">
+          <CardContent class="p-4">
+            <p class="text-sm text-muted-foreground">Сервис / авария</p>
+            <p class="text-2xl font-bold tabular-nums text-warning">{{ kpi.service }}</p>
+          </CardContent>
+        </RouterLink>
+      </Button>
     </div>
 
     <!-- Зоны объекта -->
@@ -361,47 +391,51 @@ function fmtMoney(n: number): string {
       </CardHeader>
       <CardContent>
         <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="border-b text-left text-muted-foreground">
-                <th class="py-2 pr-4 font-medium">Зона</th>
-                <th class="py-2 pr-4 font-medium">Процесс</th>
-                <th class="py-2 pr-4 font-medium">Мощность</th>
-                <th class="py-2 pr-4 font-medium">Дефицит</th>
-                <th class="py-2 pr-4 font-medium">Инциденты</th>
-                <th class="py-2 font-medium">Потери за период</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="z in zoneRows"
-                :key="z.id"
-                class="card-interactive cursor-pointer border-b last:border-0"
-                @click="router.push(`/sites/${siteId}`)"
-              >
-                <td class="py-2.5 pr-4 font-medium">{{ z.name }}</td>
-                <td class="py-2.5 pr-4 text-muted-foreground">{{ z.process }}</td>
-                <td class="py-2.5 pr-4 tabular-nums">
+          <Table>
+            <TableHeader>
+              <TableRow class="text-left text-muted-foreground">
+                <TableHead>Зона</TableHead>
+                <TableHead>Процесс</TableHead>
+                <TableHead>Мощность</TableHead>
+                <TableHead>Дефицит</TableHead>
+                <TableHead>Инциденты</TableHead>
+                <TableHead>Потери за период</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow v-for="z in zoneRows" :key="z.id">
+                <TableCell class="p-0 font-medium">
+                  <Button
+                    as-child
+                    variant="ghost"
+                    class="h-auto min-h-11 w-full justify-start rounded-none px-3 py-2.5 text-left hover:bg-transparent hover:text-primary"
+                  >
+                    <RouterLink :to="zoneRoute(z.code)">
+                      {{ z.name }} <ArrowRight class="size-3.5" />
+                    </RouterLink>
+                  </Button>
+                </TableCell>
+                <TableCell class="text-muted-foreground">{{ z.process }}</TableCell>
+                <TableCell class="tabular-nums">
                   <span :class="z.deficit > 0 ? 'text-destructive font-semibold' : 'text-success'">
                     {{ z.actual }} / {{ z.requiredCapacity }}
                   </span>
-                </td>
-                <td
-                  class="py-2.5 pr-4 tabular-nums"
-                  :class="z.deficit > 0 ? 'text-destructive' : ''"
-                >
+                </TableCell>
+                <TableCell class="tabular-nums" :class="z.deficit > 0 ? 'text-destructive' : ''">
                   {{ z.deficit > 0 ? `−${z.deficit} ед.` : '—' }}
-                </td>
-                <td class="py-2.5 pr-4 tabular-nums">
+                </TableCell>
+                <TableCell class="tabular-nums">
                   <span v-if="z.activeIncidents > 0" class="text-destructive"
                     >{{ z.activeIncidents }} активных</span
                   >
                   <span v-else class="text-muted-foreground">нет</span>
-                </td>
-                <td class="py-2.5 tabular-nums text-destructive">{{ fmtMoney(z.loss) }} ₽</td>
-              </tr>
-            </tbody>
-          </table>
+                </TableCell>
+                <TableCell class="tabular-nums text-destructive"
+                  >{{ fmtMoney(z.loss) }} ₽</TableCell
+                >
+              </TableRow>
+            </TableBody>
+          </Table>
         </div>
       </CardContent>
     </Card>
@@ -415,24 +449,25 @@ function fmtMoney(n: number): string {
           >
         </CardHeader>
         <CardContent class="space-y-2">
-          <div
+          <Button
             v-for="g in parkStates"
             :key="g.state"
-            class="card-interactive flex items-center justify-between rounded-lg border border-border p-3 cursor-pointer"
-            @click="router.push('/robots')"
+            as-child
+            variant="ghost"
+            class="card-interactive h-auto min-h-11 w-full justify-between rounded-lg border border-border p-3 text-left"
           >
-            <div class="flex items-center gap-2">
+            <RouterLink :to="{ name: 'robots' }" class="flex items-center justify-between gap-3">
               <span class="rounded px-2 py-0.5 text-xs font-medium" :class="g.cls">{{
                 g.label
               }}</span>
-            </div>
-            <div class="text-right">
-              <span class="font-bold tabular-nums">{{ g.count }}</span>
-              <span class="text-xs text-muted-foreground ml-2">
-                {{ g.robots.map((r) => r.name).join(', ') }}
+              <span class="text-right">
+                <span class="font-bold tabular-nums">{{ g.count }}</span>
+                <span class="text-xs text-muted-foreground ml-2">
+                  {{ g.robots.map((r) => r.name).join(', ') }}
+                </span>
               </span>
-            </div>
-          </div>
+            </RouterLink>
+          </Button>
         </CardContent>
       </Card>
 
@@ -489,18 +524,21 @@ function fmtMoney(n: number): string {
             Всё под контролем: аварий нет, процесс идёт по плану.
           </div>
           <div v-else class="space-y-2">
-            <div
+            <Button
               v-for="(a, idx) in attention"
               :key="idx"
-              class="card-interactive flex items-center justify-between rounded-lg border border-border p-3 cursor-pointer"
-              @click="router.push(a.to)"
+              as-child
+              variant="ghost"
+              class="card-interactive h-auto min-h-11 w-full justify-between rounded-lg border border-border p-3 text-left"
             >
-              <div>
-                <p class="text-sm font-medium">{{ a.text }}</p>
-                <p class="text-xs text-muted-foreground">{{ a.sub }}</p>
-              </div>
-              <ArrowRight class="size-4 text-muted-foreground" />
-            </div>
+              <RouterLink :to="a.to" class="flex items-center justify-between gap-3">
+                <span>
+                  <span class="block text-sm font-medium">{{ a.text }}</span>
+                  <span class="block text-xs text-muted-foreground">{{ a.sub }}</span>
+                </span>
+                <ArrowRight class="size-4 text-muted-foreground" />
+              </RouterLink>
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -518,33 +556,39 @@ function fmtMoney(n: number): string {
           Нет активных сервисных работ.
         </div>
         <div v-else class="space-y-2">
-          <div
+          <Button
             v-for="m in backlog"
             :key="m.id"
-            class="card-interactive flex items-center justify-between rounded-lg border border-border p-3 cursor-pointer"
-            @click="router.push('/maintenance')"
+            as-child
+            variant="ghost"
+            class="card-interactive h-auto min-h-11 w-full justify-between rounded-lg border border-border p-3 text-left"
           >
-            <div>
-              <p class="text-sm font-medium">{{ m.robotName }} — {{ m.title }}</p>
-              <p class="text-xs text-muted-foreground">
-                {{ m.problem ?? 'Плановая работа' }} · Исполнитель: {{ m.executor }}
-              </p>
-            </div>
-            <div class="flex items-center gap-2">
-              <span
-                v-if="m.overdue"
-                class="rounded bg-destructive/15 text-destructive px-2 py-0.5 text-xs font-medium"
-                >Просрочено</span
-              >
-              <span
-                class="rounded bg-muted text-muted-foreground px-2 py-0.5 text-xs font-medium"
-                >{{ MAINTENANCE_STATUS_RU[m.status] }}</span
-              >
-              <span class="text-xs text-muted-foreground tabular-nums">
-                срок {{ new Date(m.dueAt).toLocaleDateString('ru-RU') }}
+            <RouterLink
+              :to="{ name: 'maintenance' }"
+              class="flex items-center justify-between gap-3"
+            >
+              <span>
+                <span class="block text-sm font-medium">{{ m.robotName }} — {{ m.title }}</span>
+                <span class="block text-xs text-muted-foreground">
+                  {{ m.problem ?? 'Плановая работа' }} · Исполнитель: {{ m.executor }}
+                </span>
               </span>
-            </div>
-          </div>
+              <span class="flex items-center gap-2">
+                <span
+                  v-if="m.overdue"
+                  class="rounded bg-destructive/15 text-destructive px-2 py-0.5 text-xs font-medium"
+                  >Просрочено</span
+                >
+                <span
+                  class="rounded bg-muted text-muted-foreground px-2 py-0.5 text-xs font-medium"
+                  >{{ MAINTENANCE_STATUS_RU[m.status] }}</span
+                >
+                <span class="text-xs text-muted-foreground tabular-nums">
+                  срок {{ new Date(m.dueAt).toLocaleDateString('ru-RU') }}
+                </span>
+              </span>
+            </RouterLink>
+          </Button>
         </div>
       </CardContent>
     </Card>
@@ -580,27 +624,33 @@ function fmtMoney(n: number): string {
           </div>
         </div>
         <div class="space-y-2">
-          <div
+          <Button
             v-for="p in topProblems"
             :key="p.code"
-            class="card-interactive rounded-lg border border-border p-3 cursor-pointer"
-            @click="router.push('/analytics')"
+            as-child
+            variant="ghost"
+            class="card-interactive h-auto min-h-11 w-full rounded-lg border border-border p-3 text-left"
           >
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-medium">{{ p.name }}</p>
-                <p class="text-xs text-muted-foreground">
-                  {{ p.count }} инцидентов · зоны: {{ [...p.zones].join(', ') || '—' }}
-                </p>
-              </div>
-              <p class="text-sm font-bold tabular-nums text-destructive">
-                {{ fmtMoney(p.loss) }} ₽
-              </p>
-            </div>
-            <div class="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
-              <div class="h-full bg-destructive" :style="{ width: p.percent + '%' }" />
-            </div>
-          </div>
+            <RouterLink
+              :to="{ name: 'analytics', query: { cause: p.code, view: 'site' } }"
+              class="block"
+            >
+              <span class="flex items-center justify-between gap-3">
+                <span>
+                  <span class="block text-sm font-medium">{{ p.name }}</span>
+                  <span class="block text-xs text-muted-foreground">
+                    {{ p.count }} инцидентов · зоны: {{ [...p.zones].join(', ') || '—' }}
+                  </span>
+                </span>
+                <span class="text-sm font-bold tabular-nums text-destructive">
+                  {{ fmtMoney(p.loss) }} ₽
+                </span>
+              </span>
+              <span class="mt-2 block h-1.5 overflow-hidden rounded-full bg-muted">
+                <span class="block h-full bg-destructive" :style="{ width: p.percent + '%' }" />
+              </span>
+            </RouterLink>
+          </Button>
           <div v-if="topProblems.length === 0" class="text-sm text-muted-foreground">
             Потерь за период не зафиксировано.
           </div>

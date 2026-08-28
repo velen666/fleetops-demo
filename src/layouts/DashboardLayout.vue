@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter, RouterView } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { Button } from '@/components/ui/button'
@@ -14,12 +14,32 @@ import {
   LogOut,
   Wrench,
   MapPin,
+  Menu,
+  X,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const mobileNavOpen = ref(false)
+const isDesktop = ref(false)
+const mobileNavDrawer = ref<HTMLElement | null>(null)
+const mobileNavClose = ref<{ $el: HTMLElement } | null>(null)
+const mobileNavTrigger = ref<{ $el: HTMLElement } | null>(null)
+let desktopMedia: MediaQueryList | undefined
+
+function syncViewport(): void {
+  isDesktop.value = desktopMedia?.matches ?? false
+}
+
+onMounted(() => {
+  desktopMedia = window.matchMedia('(min-width: 1024px)')
+  syncViewport()
+  desktopMedia.addEventListener('change', syncViewport)
+})
+
+onBeforeUnmount(() => desktopMedia?.removeEventListener('change', syncViewport))
 
 const iconMap: Record<string, Component> = {
   LayoutDashboard,
@@ -172,11 +192,43 @@ function isActive(name: string): boolean {
   return route.name === name
 }
 
+function openMobileNav(): void {
+  mobileNavOpen.value = true
+  void nextTick(() => mobileNavClose.value?.$el.focus())
+}
+
+function closeMobileNav(returnFocus = true): void {
+  mobileNavOpen.value = false
+  if (returnFocus) void nextTick(() => mobileNavTrigger.value?.$el.focus())
+}
+
+function trapMobileFocus(event: KeyboardEvent): void {
+  if (event.key !== 'Tab' || isDesktop.value || !mobileNavOpen.value || !mobileNavDrawer.value)
+    return
+  const focusable = Array.from(
+    mobileNavDrawer.value.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  )
+  const first = focusable[0]
+  const last = focusable.at(-1)
+  if (!first || !last) return
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+
 function navigate(name: string): void {
   router.push({ name })
+  closeMobileNav(false)
 }
 
 function logout(): void {
+  closeMobileNav(false)
   auth.logout()
   window.location.href = '/login'
 }
@@ -190,7 +242,25 @@ function logout(): void {
     >
       К основному содержимому
     </a>
-    <aside class="app-sidebar flex w-72 shrink-0 flex-col border-r border-sidebar-border">
+    <Button
+      v-if="mobileNavOpen"
+      variant="ghost"
+      class="fixed inset-0 z-40 h-auto w-auto rounded-none p-0 lg:hidden"
+      aria-label="Закрыть навигацию"
+      @click="closeMobileNav()"
+    >
+      <span class="sr-only">Закрыть навигацию</span>
+    </Button>
+    <aside
+      ref="mobileNavDrawer"
+      :class="[
+        'app-sidebar fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-sidebar-border transition-transform duration-200 lg:static lg:z-auto lg:shrink-0 lg:translate-x-0',
+        mobileNavOpen ? 'translate-x-0' : '-translate-x-full',
+      ]"
+      :aria-hidden="!isDesktop && !mobileNavOpen ? 'true' : undefined"
+      :inert="!isDesktop && !mobileNavOpen"
+      @keydown="trapMobileFocus"
+    >
       <div class="flex min-h-18 items-center gap-3 border-b border-sidebar-border px-5">
         <div
           class="flex size-10 items-center justify-center rounded-xl bg-[image:var(--gradient-primary)] shadow-[var(--shadow-glow-primary)]"
@@ -201,6 +271,17 @@ function logout(): void {
           <span class="block text-lg font-bold tracking-tight">FleetOps</span>
           <span class="text-xs text-muted-foreground">Operations Command Center</span>
         </div>
+        <Button
+          ref="mobileNavClose"
+          variant="ghost"
+          size="icon"
+          class="ml-auto lg:hidden"
+          aria-label="Закрыть навигацию"
+          @click="closeMobileNav()"
+        >
+          <X class="size-5" />
+          <span class="sr-only">Закрыть навигацию</span>
+        </Button>
       </div>
 
       <nav class="flex-1 space-y-6 overflow-y-auto px-3 py-5" aria-label="Основная навигация">
@@ -210,7 +291,6 @@ function logout(): void {
             v-for="item in group.items"
             :key="item.name"
             variant="ghost"
-            size="sm"
             :aria-current="isActive(item.name) ? 'page' : undefined"
             :class="[
               'w-full justify-start gap-3 rounded-lg px-3 text-sm font-medium',
@@ -238,22 +318,28 @@ function logout(): void {
             <p class="text-xs text-muted-foreground truncate">{{ auth.user?.role }}</p>
           </div>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          class="w-full justify-start text-muted-foreground"
-          @click="logout"
-        >
+        <Button variant="ghost" class="w-full justify-start text-muted-foreground" @click="logout">
           <LogOut class="size-4 mr-2" />
           Сменить роль
         </Button>
       </div>
     </aside>
 
-    <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
+    <div class="flex min-w-0 flex-1 flex-col overflow-hidden" :inert="!isDesktop && mobileNavOpen">
       <header
         class="app-header flex min-h-18 items-center border-b border-border px-5 sm:px-6 lg:px-8"
       >
+        <Button
+          ref="mobileNavTrigger"
+          variant="ghost"
+          size="icon"
+          class="mr-3 lg:hidden"
+          aria-label="Открыть навигацию"
+          @click="openMobileNav"
+        >
+          <Menu class="size-5" />
+          <span class="sr-only">Открыть навигацию</span>
+        </Button>
         <div class="min-w-0">
           <p class="eyebrow mb-1">{{ roleContext }} · 30 дней</p>
           <h1 class="text-balance text-lg font-bold tracking-tight">{{ currentTitle }}</h1>

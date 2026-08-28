@@ -86,6 +86,11 @@ const incidentDowntime = computed(() =>
 const incidentActions = computed(() =>
   serviceActions.value.filter((a) => a.incidentId === incidentId.value),
 )
+const activeIncidentAction = computed(() =>
+  incidentActions.value.find(
+    (action) => action.status === 'CREATED' || action.status === 'IN_PROGRESS',
+  ),
+)
 const incidentRecovery = computed(() =>
   recoveryConfirmations.value.find((r) => r.incidentId === incidentId.value),
 )
@@ -616,6 +621,15 @@ const CAUSE_OPTIONS = Object.entries(CAUSE_CATALOG)
               @click="showAction = true"
             >
               Создать действие / ТОиР
+            </Button>
+            <Button
+              v-if="activeIncidentAction && auth.can('actions.complete')"
+              size="sm"
+              :variant="actionVariant('COMPLETE_ACTION')"
+              class="min-h-9"
+              @click="openComplete(activeIncidentAction.id)"
+            >
+              Зафиксировать результат
             </Button>
             <Button
               v-if="auth.can('actions.recovery.confirm') && !incident.recoveryConfirmed"

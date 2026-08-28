@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Bar, Line } from 'vue-chartjs'
 import {
   Chart as ChartJS,
@@ -40,6 +40,7 @@ const props = defineProps<{
 }>()
 
 interface ChartTheme {
+  revision: number
   palette: string[]
   foreground: string
   mutedForeground: string
@@ -57,13 +58,31 @@ function resolveColor(value: string): string {
   return value.startsWith('--') ? cssToken(value) : value
 }
 
-const chartTheme = computed<ChartTheme>(() => ({
-  palette: ['--chart-1', '--chart-2', '--chart-3', '--chart-4', '--chart-5'].map(cssToken),
-  foreground: cssToken('--foreground'),
-  mutedForeground: cssToken('--muted-foreground'),
-  border: cssToken('--border'),
-  popover: cssToken('--popover'),
-}))
+const themeRevision = ref(0)
+let themeObserver: MutationObserver | undefined
+
+onMounted(() => {
+  themeObserver = new MutationObserver(() => {
+    themeRevision.value++
+  })
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['class', 'data-theme'],
+  })
+})
+
+onBeforeUnmount(() => themeObserver?.disconnect())
+
+const chartTheme = computed<ChartTheme>(() => {
+  return {
+    revision: themeRevision.value,
+    palette: ['--chart-1', '--chart-2', '--chart-3', '--chart-4', '--chart-5'].map(cssToken),
+    foreground: cssToken('--foreground'),
+    mutedForeground: cssToken('--muted-foreground'),
+    border: cssToken('--border'),
+    popover: cssToken('--popover'),
+  }
+})
 
 const chartData = computed(() => ({
   labels: props.labels,
@@ -128,10 +147,7 @@ const options = computed(() => {
       },
     },
   }
-  if (props.type === 'line') return base
-  return {
-    ...base,
-    indexAxis: props.horizontal ? ('y' as const) : ('x' as const),
+  const scales = {
     scales: {
       x: {
         stacked: props.type === 'bar-stacked',
@@ -148,6 +164,12 @@ const options = computed(() => {
         grid: { color: chartTheme.value.border },
       },
     },
+  }
+  if (props.type === 'line') return { ...base, ...scales }
+  return {
+    ...base,
+    ...scales,
+    indexAxis: props.horizontal ? ('y' as const) : ('x' as const),
   }
 })
 </script>

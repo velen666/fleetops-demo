@@ -5,7 +5,7 @@ import { useTenantScope } from '@/composables/useTenantScope'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ArrowRight } from 'lucide-vue-next'
-import { useRouter } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import { CAUSE_CATALOG } from '@/data/generator'
 import { impactSeconds, techAvailabilityPct, powerAvailabilityPct } from '@/data/metrics'
 
@@ -209,14 +209,21 @@ const decisionQueue = computed(() =>
     .filter((i) => i.status !== 'CLOSED')
     .map((i) => ({ incident: i, step: nextStep(i.id) as NextStep | null }))
     .filter((r) => r.step)
+    .sort((a, b) => {
+      const severityWeight: Record<string, number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 }
+      const severityDelta =
+        severityWeight[b.incident.severity] - severityWeight[a.incident.severity]
+      if (severityDelta !== 0) return severityDelta
+      const lossDelta = b.incident.lossRubles - a.incident.lossRubles
+      return lossDelta !== 0
+        ? lossDelta
+        : a.incident.detectedAt.localeCompare(b.incident.detectedAt)
+    })
     .slice(0, 8),
 )
 
 function goSite(id: string): void {
   router.push({ name: 'site-details', params: { siteId: id } })
-}
-function goIncident(id: string): void {
-  router.push({ name: 'incident-details', params: { incidentId: id } })
 }
 function goKpi(routeName: 'analytics' | 'maintenance'): void {
   router.push({ name: routeName })
@@ -241,7 +248,7 @@ const VERDICT_RU: Record<SiteCard['verdict'], string> = {
 <template>
   <div class="space-y-6">
     <!-- Строка 1: портфельный вердикт -->
-    <Card tone="decision" density="spacious" class="page-hero">
+    <Card tone="glass" density="spacious" class="page-hero">
       <CardContent class="space-y-5">
         <div class="flex flex-wrap items-start justify-between gap-5">
           <div class="max-w-2xl">
@@ -283,11 +290,7 @@ const VERDICT_RU: Record<SiteCard['verdict'], string> = {
             Контур: MTTR {{ fleetKpis.mttrHours.toFixed(1) }} ч · сервисный бэклог
             {{ fleetKpis.backlog }} · активных инцидентов {{ portfolioVerdict.decisions }}
           </p>
-          <Button
-            v-if="portfolioVerdict.worst"
-            size="sm"
-            @click="goSite(portfolioVerdict.worst.id)"
-          >
+          <Button v-if="portfolioVerdict.worst" @click="goSite(portfolioVerdict.worst.id)">
             Открыть объект <ArrowRight class="size-4" />
           </Button>
         </div>
@@ -314,39 +317,41 @@ const VERDICT_RU: Record<SiteCard['verdict'], string> = {
       <Button
         v-for="c in siteCards"
         :key="c.id"
+        as-child
         variant="outline"
         class="card-data kpi-clickable h-auto flex-col items-stretch gap-0 overflow-hidden p-0 text-left hover:border-primary/40"
-        @click="goSite(c.id)"
       >
-        <CardHeader class="pb-2">
-          <CardTitle class="text-base flex items-center justify-between gap-2">
-            {{ c.name }}
-            <span class="text-xs font-medium" :class="VERDICT_CLASS[c.verdict]">
-              {{ VERDICT_RU[c.verdict] }}
-            </span>
-          </CardTitle>
-          <CardDescription class="tabular-nums">
-            Парк {{ c.fleet }}: {{ c.working }} работают · {{ c.reserve }}/{{
-              c.reserveNorm
-            }}
-            резерв · {{ c.service }} сервис
-          </CardDescription>
-        </CardHeader>
-        <CardContent class="text-xs space-y-1 tabular-nums">
-          <p>
-            Техническая доступность
-            <span class="font-medium">{{ c.techAvailability.toFixed(1) }}%</span>
-            · мощность
-            <span class="font-medium">{{ c.powerAvailability.toFixed(1) }}%</span>
-          </p>
-          <p>
-            Влияние на процесс <span class="font-medium">{{ c.impactHours.toFixed(1) }} ч</span>
-          </p>
-          <p class="text-destructive font-medium">Потери {{ fmtMoney(c.loss) }} ₽</p>
-          <p class="text-muted-foreground">
-            Активных инцидентов: {{ c.activeIncidents }} · бэклог: {{ c.backlog }}
-          </p>
-        </CardContent>
+        <RouterLink :to="{ name: 'site-details', params: { siteId: c.id } }">
+          <CardHeader class="pb-2">
+            <CardTitle class="text-base flex items-center justify-between gap-2">
+              {{ c.name }}
+              <span class="text-xs font-medium" :class="VERDICT_CLASS[c.verdict]">
+                {{ VERDICT_RU[c.verdict] }}
+              </span>
+            </CardTitle>
+            <CardDescription class="tabular-nums">
+              Парк {{ c.fleet }}: {{ c.working }} работают · {{ c.reserve }}/{{
+                c.reserveNorm
+              }}
+              резерв · {{ c.service }} сервис
+            </CardDescription>
+          </CardHeader>
+          <CardContent class="text-xs space-y-1 tabular-nums">
+            <p>
+              Техническая доступность
+              <span class="font-medium">{{ c.techAvailability.toFixed(1) }}%</span>
+              · мощность
+              <span class="font-medium">{{ c.powerAvailability.toFixed(1) }}%</span>
+            </p>
+            <p>
+              Влияние на процесс <span class="font-medium">{{ c.impactHours.toFixed(1) }} ч</span>
+            </p>
+            <p class="text-destructive font-medium">Потери {{ fmtMoney(c.loss) }} ₽</p>
+            <p class="text-muted-foreground">
+              Активных инцидентов: {{ c.activeIncidents }} · бэклог: {{ c.backlog }}
+            </p>
+          </CardContent>
+        </RouterLink>
       </Button>
     </div>
 
@@ -359,18 +364,21 @@ const VERDICT_RU: Record<SiteCard['verdict'], string> = {
       </CardHeader>
       <CardContent>
         <div class="space-y-1">
-          <div
+          <Button
             v-for="sc in systemicCauses"
             :key="sc.code"
-            class="flex flex-wrap items-center justify-between gap-2 text-sm border-b border-border/50 pb-1 cursor-pointer hover:text-primary"
-            @click="router.push({ name: 'analytics' })"
+            as-child
+            variant="ghost"
+            class="h-auto min-h-11 w-full justify-between rounded-none border-b border-border/50 px-0 py-2 text-left text-sm hover:text-primary"
           >
-            <span>{{ CAUSE_CATALOG[sc.code]?.name ?? sc.code }}</span>
-            <span class="tabular-nums text-xs text-muted-foreground">
-              {{ sc.count }} случаев · {{ sc.sites.size }} объекта ·
-              <span class="text-destructive">{{ fmtMoney(sc.loss) }} ₽</span>
-            </span>
-          </div>
+            <RouterLink :to="{ name: 'analytics', query: { cause: sc.code, view: 'site' } }">
+              <span>{{ CAUSE_CATALOG[sc.code]?.name ?? sc.code }}</span>
+              <span class="tabular-nums text-xs text-muted-foreground">
+                {{ sc.count }} случаев · {{ sc.sites.size }} объекта ·
+                <span class="text-destructive">{{ fmtMoney(sc.loss) }} ₽</span>
+              </span>
+            </RouterLink>
+          </Button>
         </div>
       </CardContent>
     </Card>
@@ -386,18 +394,21 @@ const VERDICT_RU: Record<SiteCard['verdict'], string> = {
       </CardHeader>
       <CardContent>
         <div class="space-y-1">
-          <div
+          <Button
             v-for="row in decisionQueue"
             :key="row.incident.id"
-            class="flex flex-wrap items-center justify-between gap-2 text-sm border-b border-border/50 pb-1 cursor-pointer hover:text-primary"
-            @click="goIncident(row.incident.id)"
+            as-child
+            variant="ghost"
+            class="h-auto min-h-11 w-full justify-between rounded-none border-b border-border/50 px-0 py-2 text-left text-sm hover:text-primary"
           >
-            <span class="font-mono text-xs">{{ row.incident.incidentNumber }}</span>
-            <span class="flex-1 truncate ml-2">{{ row.incident.description.slice(0, 80) }}</span>
-            <span class="text-xs text-muted-foreground"
-              >{{ row.step?.label }} · {{ row.step?.owner }}</span
-            >
-          </div>
+            <RouterLink :to="{ name: 'incident-details', params: { incidentId: row.incident.id } }">
+              <span class="font-mono text-xs">{{ row.incident.incidentNumber }}</span>
+              <span class="flex-1 truncate ml-2">{{ row.incident.description.slice(0, 80) }}</span>
+              <span class="text-xs text-muted-foreground"
+                >{{ row.step?.label }} · {{ row.step?.owner }}</span
+              >
+            </RouterLink>
+          </Button>
           <p v-if="decisionQueue.length === 0" class="text-sm text-muted-foreground">
             Активных решений нет — портфель стабилен.
           </p>
