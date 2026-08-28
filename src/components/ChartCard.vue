@@ -36,33 +36,53 @@ const props = defineProps<{
   }>
   horizontal?: boolean
   suffix?: string
+  size?: 'compact' | 'default' | 'hero'
 }>()
 
-const DEFAULT_COLORS = [
-  '#00a0e9',
-  '#ff6b6b',
-  '#fcd34d',
-  '#10b981',
-  '#8b5cf6',
-  '#ec4899',
-  '#06b6d4',
-  '#f97316',
-]
+interface ChartTheme {
+  palette: string[]
+  foreground: string
+  mutedForeground: string
+  border: string
+  popover: string
+}
+
+function cssToken(name: string): string {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  const referencedToken = value.match(/^var\((--[^,\s)]+)/)?.[1]
+  return referencedToken ? cssToken(referencedToken) : value
+}
+
+function resolveColor(value: string): string {
+  return value.startsWith('--') ? cssToken(value) : value
+}
+
+const chartTheme = computed<ChartTheme>(() => ({
+  palette: ['--chart-1', '--chart-2', '--chart-3', '--chart-4', '--chart-5'].map(cssToken),
+  foreground: cssToken('--foreground'),
+  mutedForeground: cssToken('--muted-foreground'),
+  border: cssToken('--border'),
+  popover: cssToken('--popover'),
+}))
 
 const chartData = computed(() => ({
   labels: props.labels,
   datasets: props.datasets.map((ds, i) => ({
     label: ds.label,
     data: ds.data,
-    backgroundColor: ds.color ?? DEFAULT_COLORS[i % DEFAULT_COLORS.length],
-    borderColor: ds.color ?? DEFAULT_COLORS[i % DEFAULT_COLORS.length],
-    borderRadius: props.type === 'line' ? undefined : 6,
+    backgroundColor: resolveColor(
+      ds.color ?? chartTheme.value.palette[i % chartTheme.value.palette.length],
+    ),
+    borderColor: resolveColor(
+      ds.color ?? chartTheme.value.palette[i % chartTheme.value.palette.length],
+    ),
+    borderRadius: props.type === 'line' ? undefined : 8,
     borderSkipped: false,
     borderWidth: props.type === 'line' ? 2 : 0,
     fill: props.type === 'line',
-    tension: 0.3,
-    pointRadius: 3,
-    pointHoverRadius: 5,
+    tension: 0.35,
+    pointRadius: 2,
+    pointHoverRadius: 4,
   })),
 }))
 
@@ -90,17 +110,18 @@ const options = computed(() => {
         display: props.datasets.length > 1,
         position: 'bottom' as const,
         labels: {
-          color: '#94a3b8',
-          font: { size: 11 },
+          color: chartTheme.value.mutedForeground,
+          font: { size: 11, weight: 600 },
           usePointStyle: true,
           pointStyle: 'circle' as const,
         },
       },
       tooltip: {
-        backgroundColor: 'rgba(15,23,42,0.95)',
-        titleColor: '#e2e8f0',
-        bodyColor: '#cbd5e1',
-        padding: 10,
+        backgroundColor: chartTheme.value.popover,
+        titleColor: chartTheme.value.foreground,
+        bodyColor: chartTheme.value.mutedForeground,
+        padding: 12,
+        cornerRadius: 8,
         callbacks: {
           label: tooltipLabel as never,
         },
@@ -115,16 +136,16 @@ const options = computed(() => {
       x: {
         stacked: props.type === 'bar-stacked',
         ticks: {
-          color: '#64748b',
+          color: chartTheme.value.mutedForeground,
           font: { size: 10 },
           callback: (val: unknown) => (typeof val === 'number' ? val.toLocaleString('ru-RU') : val),
         },
-        grid: { color: 'rgba(148,163,184,0.08)' },
+        grid: { color: chartTheme.value.border },
       },
       y: {
         stacked: props.type === 'bar-stacked',
-        ticks: { color: '#64748b', font: { size: 10 } },
-        grid: { color: 'rgba(148,163,184,0.08)' },
+        ticks: { color: chartTheme.value.mutedForeground, font: { size: 10 } },
+        grid: { color: chartTheme.value.border },
       },
     },
   }
@@ -132,7 +153,14 @@ const options = computed(() => {
 </script>
 
 <template>
-  <div class="relative h-64">
+  <div
+    class="relative"
+    :class="{
+      'h-56': size === 'compact',
+      'h-72 lg:h-80': !size || size === 'default',
+      'h-80 lg:h-96': size === 'hero',
+    }"
+  >
     <Bar v-if="type !== 'line'" :data="chartData" :options="options as never" />
     <Line v-else :data="chartData" :options="options as never" />
   </div>

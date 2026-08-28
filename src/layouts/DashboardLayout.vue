@@ -38,19 +38,21 @@ interface NavItem {
   title: string
   icon: string
   sidebarOrder: number
+  group: 'control' | 'operations' | 'assets' | 'insights'
   requiredPermission?: string
   requiredRole?: string
   requiredRoles?: string[]
 }
 
 const allNavItems: NavItem[] = [
-  { name: 'overview', title: 'Обзор', icon: 'LayoutDashboard', sidebarOrder: 10 },
+  { name: 'overview', title: 'Обзор', icon: 'LayoutDashboard', sidebarOrder: 10, group: 'control' },
   {
     // Портфель роботизации (Отчёт §10.4) — главная руководителя эксплуатации.
     name: 'portfolio',
     title: 'Портфель',
     icon: 'LayoutDashboard',
     sidebarOrder: 8,
+    group: 'control',
     requiredRoles: ['SYSTEM_ADMIN', 'FLEET_OPERATIONS_MANAGER', 'SERVICE_MANAGER'],
   },
   {
@@ -59,6 +61,7 @@ const allNavItems: NavItem[] = [
     title: 'Экономика',
     icon: 'TrendingDown',
     sidebarOrder: 8,
+    group: 'control',
     requiredRoles: ['OPERATIONS_DIRECTOR', 'FINANCE_MANAGER', 'SYSTEM_ADMIN'],
   },
   {
@@ -67,6 +70,7 @@ const allNavItems: NavItem[] = [
     title: 'Мой объект',
     icon: 'MapPin',
     sidebarOrder: 5,
+    group: 'control',
     requiredRole: 'SITE_MANAGER',
   },
   {
@@ -74,6 +78,7 @@ const allNavItems: NavItem[] = [
     title: 'События',
     icon: 'Radio',
     sidebarOrder: 20,
+    group: 'operations',
     requiredPermission: 'events.read',
   },
   {
@@ -81,6 +86,7 @@ const allNavItems: NavItem[] = [
     title: 'Инциденты',
     icon: 'AlertTriangle',
     sidebarOrder: 30,
+    group: 'operations',
     requiredPermission: 'incidents.read',
   },
   {
@@ -88,6 +94,7 @@ const allNavItems: NavItem[] = [
     title: 'Простои',
     icon: 'Clock',
     sidebarOrder: 40,
+    group: 'operations',
     requiredPermission: 'downtime.read',
   },
   {
@@ -95,6 +102,7 @@ const allNavItems: NavItem[] = [
     title: 'Аналитика и экономика',
     icon: 'TrendingDown',
     sidebarOrder: 50,
+    group: 'insights',
     requiredPermission: 'economics.read',
   },
   // Раздельные разделы (ТЗ v2.0 §4): «Объекты» и «Роботы»
@@ -103,14 +111,16 @@ const allNavItems: NavItem[] = [
     title: 'Объекты',
     icon: 'MapPin',
     sidebarOrder: 55,
+    group: 'assets',
   },
-  { name: 'robots', title: 'Роботы', icon: 'Bot', sidebarOrder: 60 },
+  { name: 'robots', title: 'Роботы', icon: 'Bot', sidebarOrder: 60, group: 'assets' },
   {
     // Сервис и ТОиР (ACC-005): раздел доступен из навигации, а не только по URL.
     name: 'maintenance',
     title: 'Сервис и ТОиР',
     icon: 'Wrench',
     sidebarOrder: 63,
+    group: 'operations',
     requiredPermission: 'actions.read',
   },
   {
@@ -118,6 +128,7 @@ const allNavItems: NavItem[] = [
     title: 'Отчёты',
     icon: 'FileText',
     sidebarOrder: 70,
+    group: 'insights',
     requiredPermission: 'reports.read',
   },
 ]
@@ -138,6 +149,28 @@ const navItems = computed(() =>
 )
 
 const currentTitle = computed(() => (route.meta?.title as string) ?? 'FleetOps')
+const roleContext = computed(() =>
+  auth.activeRoleCode === 'SITE_MANAGER' ? 'Объектовый контур' : 'Портфель роботизации',
+)
+const navGroups = computed(() => {
+  const labels: Record<NavItem['group'], string> = {
+    control: 'Управление',
+    operations: 'Операционный контур',
+    assets: 'Активы',
+    insights: 'Анализ и отчёты',
+  }
+  const groups: NavItem['group'][] = ['control', 'operations', 'assets', 'insights']
+  return groups
+    .map((group) => ({
+      label: labels[group],
+      items: navItems.value.filter((item) => item.group === group),
+    }))
+    .filter((group) => group.items.length > 0)
+})
+
+function isActive(name: string): boolean {
+  return route.name === name
+}
 
 function navigate(name: string): void {
   router.push({ name })
@@ -150,42 +183,57 @@ function logout(): void {
 </script>
 
 <template>
-  <div class="flex h-screen bg-background text-foreground">
-    <aside class="flex w-64 flex-col border-r border-border bg-sidebar">
-      <div class="flex h-14 items-center gap-2 border-b border-sidebar-border px-4">
+  <div class="app-shell flex h-screen text-foreground">
+    <a
+      href="#main-content"
+      class="sr-only fixed left-4 top-4 z-50 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground focus:not-sr-only focus-visible:ring-3 focus-visible:ring-ring"
+    >
+      К основному содержимому
+    </a>
+    <aside class="app-sidebar flex w-72 shrink-0 flex-col border-r border-sidebar-border">
+      <div class="flex min-h-18 items-center gap-3 border-b border-sidebar-border px-5">
         <div
-          class="size-8 rounded-lg bg-gradient-to-br from-brand-blue-500 to-brand-blue-700 flex items-center justify-center"
+          class="flex size-10 items-center justify-center rounded-xl bg-[image:var(--gradient-primary)] shadow-[var(--shadow-glow-primary)]"
         >
-          <Bot class="size-5 text-white" />
+          <Bot class="size-5 text-primary-foreground" />
         </div>
-        <span class="text-lg font-semibold tracking-tight">FleetOps</span>
+        <div>
+          <span class="block text-lg font-bold tracking-tight">FleetOps</span>
+          <span class="text-xs text-muted-foreground">Operations Command Center</span>
+        </div>
       </div>
 
-      <nav class="flex-1 space-y-1 p-3 overflow-y-auto">
-        <button
-          v-for="item in navItems"
-          :key="item.name"
-          :class="[
-            'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-            route.name === item.name
-              ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-              : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
-          ]"
-          @click="navigate(item.name)"
-        >
-          <component :is="iconMap[item.icon]" class="size-4" />
-          {{ item.title }}
-        </button>
+      <nav class="flex-1 space-y-6 overflow-y-auto px-3 py-5" aria-label="Основная навигация">
+        <section v-for="group in navGroups" :key="group.label" class="space-y-1.5">
+          <p class="eyebrow px-3">{{ group.label }}</p>
+          <Button
+            v-for="item in group.items"
+            :key="item.name"
+            variant="ghost"
+            size="sm"
+            :aria-current="isActive(item.name) ? 'page' : undefined"
+            :class="[
+              'w-full justify-start gap-3 rounded-lg px-3 text-sm font-medium',
+              isActive(item.name)
+                ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
+                : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
+            ]"
+            @click="navigate(item.name)"
+          >
+            <component :is="iconMap[item.icon]" class="size-4" />
+            {{ item.title }}
+          </Button>
+        </section>
       </nav>
 
-      <div class="border-t border-sidebar-border p-3">
-        <div class="flex items-center gap-2 px-2 py-1.5 mb-2">
+      <div class="border-t border-sidebar-border p-4">
+        <div class="mb-3 flex items-center gap-3 rounded-xl bg-sidebar-accent/45 p-3">
           <div
-            class="size-8 rounded-full bg-primary/15 flex items-center justify-center text-primary font-semibold text-sm"
+            class="flex size-9 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary"
           >
             {{ auth.user?.name?.charAt(0) ?? '?' }}
           </div>
-          <div class="flex-1 min-w-0">
+          <div class="min-w-0 flex-1">
             <p class="text-sm font-medium truncate">{{ auth.user?.name }}</p>
             <p class="text-xs text-muted-foreground truncate">{{ auth.user?.role }}</p>
           </div>
@@ -202,16 +250,27 @@ function logout(): void {
       </div>
     </aside>
 
-    <div class="flex-1 flex flex-col overflow-hidden">
-      <header class="flex h-14 items-center border-b border-border px-6">
-        <h1 class="text-lg font-semibold">{{ currentTitle }}</h1>
+    <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <header
+        class="app-header flex min-h-18 items-center border-b border-border px-5 sm:px-6 lg:px-8"
+      >
+        <div class="min-w-0">
+          <p class="eyebrow mb-1">{{ roleContext }} · 30 дней</p>
+          <h1 class="text-balance text-lg font-bold tracking-tight">{{ currentTitle }}</h1>
+        </div>
       </header>
-      <main class="flex-1 overflow-y-auto p-6">
-        <RouterView v-slot="{ Component: ViewComponent }">
-          <KeepAlive>
-            <component :is="ViewComponent" />
-          </KeepAlive>
-        </RouterView>
+      <main
+        id="main-content"
+        tabindex="-1"
+        class="flex-1 overflow-y-auto px-4 py-5 sm:px-6 lg:px-8"
+      >
+        <div class="mx-auto w-full max-w-[1440px]">
+          <RouterView v-slot="{ Component: ViewComponent }">
+            <KeepAlive>
+              <component :is="ViewComponent" />
+            </KeepAlive>
+          </RouterView>
+        </div>
       </main>
     </div>
   </div>

@@ -116,7 +116,7 @@ git commit -m "demo: establish executive command center visual foundation"
 - Produces a bounded shell with role, scope and 30-day context.
 - Produces ChartCard options generated from --chart-1..5, --muted-foreground, --border, --popover and --foreground.
 
-- [ ] **Step 1: Write a pure chart-theme adapter**
+- [x] **Step 1: Write a pure chart-theme adapter**
 
 ```ts
 function cssToken(name: string): string {
@@ -130,7 +130,7 @@ function chartTheme(): ChartTheme {
 }
 ```
 
-- [ ] **Step 2: Prove the adapter type-checks before replacing raw palette values**
+- [x] **Step 2: Prove the adapter type-checks before replacing raw palette values**
 
 ```powershell
 npm run type-check
@@ -138,7 +138,7 @@ npm run type-check
 
 Expected: the app is type-safe; next step removes hardcoded chart colours.
 
-- [ ] **Step 3: Apply the chart adapter and refactor shell**
+- [x] **Step 3: Apply the chart adapter and refactor shell**
 
 Use chartTheme() for dataset, grid/tick and tooltip colours. Replace native navigation controls with semantic Button controls. Use grouped navigation, glass shell classes, a header context line and a max-w-[1440px] page workspace:
 
@@ -150,7 +150,7 @@ Use chartTheme() for dataset, grid/tick and tooltip colours. Replace native navi
 
 Keep route names and permission filtering unchanged.
 
-- [ ] **Step 4: Verify visual wiring**
+- [x] **Step 4: Verify visual wiring**
 
 ```powershell
 npm run lint
@@ -160,7 +160,7 @@ rg -n "#[0-9A-Fa-f]{3,8}" src/components/ChartCard.vue
 
 Expected: lint/type checks pass; no component-local chart colour literal remains.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/layouts/DashboardLayout.vue src/components/ChartCard.vue
