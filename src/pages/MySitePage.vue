@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useDemoData } from '@/composables/useDemoData'
 import { useAuthStore } from '@/stores/auth'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { FLEET_STATE_RU, FLEET_STATE_CLASS, MAINTENANCE_STATUS_RU } from '@/data/labels'
 import { CAUSE_CATALOG, MISSION_STATS } from '@/data/generator'
 import {
@@ -162,6 +163,15 @@ const attention = computed(() => {
   return items.slice(0, 6)
 })
 
+const operationsPulse = computed(() => {
+  const deficit = zoneRows.value.find((z) => z.deficit > 0)
+  return {
+    attention: attention.value[0] ?? null,
+    deficit,
+    reserve: reserveState.value,
+  }
+})
+
 // ─── Сервисный бэклог объекта (§8.6) ──────────────────────────────────────
 
 const backlog = computed(() =>
@@ -236,34 +246,59 @@ function fmtMoney(n: number): string {
 
 <template>
   <div class="space-y-6">
-    <!-- Верхняя строка: объект, период, обновление, статус процесса -->
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div class="flex items-center gap-3">
-        <MapPin class="size-5 text-primary" />
-        <div>
-          <h1 class="text-xl font-semibold">{{ site?.name ?? 'Объект' }}</h1>
-          <p class="text-sm text-muted-foreground">
-            Период: 30 дней · Ставка потерь
-            {{ fmtMoney(site?.ratePerHour ?? 0) }} ₽/ч
+    <!-- Состояние процесса и следующий drill-down в одном Operations Pulse. -->
+    <section class="page-hero p-5 sm:p-6">
+      <div class="flex flex-wrap items-start justify-between gap-5">
+        <div class="max-w-2xl">
+          <p class="eyebrow mb-2">Operations Pulse · 30 дней</p>
+          <h1 class="text-balance text-3xl font-bold tracking-tight">
+            {{ site?.name ?? 'Объект' }}
+          </h1>
+          <p class="mt-2 text-sm text-muted-foreground">
+            Ставка подтверждённых потерь {{ fmtMoney(site?.ratePerHour ?? 0) }} ₽/ч ·
+            {{ processStatus.hint }}
           </p>
         </div>
+        <span
+          class="status-pill"
+          :class="
+            processStatus.level === 'critical'
+              ? 'bg-destructive/15 text-destructive'
+              : processStatus.level === 'warning'
+                ? 'bg-warning/15 text-warning'
+                : 'bg-success/15 text-success'
+          "
+        >
+          <ShieldAlert class="size-3.5" /> {{ processStatus.label }}
+        </span>
       </div>
-      <span
-        :class="
-          processStatus.level === 'critical'
-            ? 'bg-destructive/15 text-destructive'
-            : processStatus.level === 'warning'
-              ? 'bg-warning/15 text-warning'
-              : 'bg-success/15 text-success'
-        "
-        class="rounded px-3 py-1.5 text-sm font-medium"
-      >
-        {{ processStatus.label }}
-      </span>
-    </div>
+      <div class="mt-5 grid gap-3 border-t border-border/60 pt-4 md:grid-cols-[1fr_auto]">
+        <div>
+          <p class="text-sm font-semibold">
+            {{ operationsPulse.attention?.text ?? 'Отклонений, требующих решения, нет' }}
+          </p>
+          <p class="mt-1 text-xs text-muted-foreground">
+            {{ operationsPulse.attention?.sub ?? 'Процесс и резерв находятся в рабочем состоянии' }}
+          </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <p class="text-xs text-muted-foreground">
+            Резерв {{ operationsPulse.reserve.free }} / {{ operationsPulse.reserve.norm }} · зарядка
+            {{ kpi.charging }} · инцидентов {{ kpi.activeIncidents }}
+          </p>
+          <Button
+            v-if="operationsPulse.attention"
+            size="sm"
+            @click="router.push(operationsPulse.attention.to)"
+          >
+            Открыть приоритет <ArrowRight class="size-4" />
+          </Button>
+        </div>
+      </div>
+    </section>
 
     <!-- Ключевые показатели (§8.1; title = определение, период) -->
-    <div class="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+    <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
       <Card
         class="kpi-clickable"
         :class="kpi.deficitZones > 0 ? 'border-destructive/40' : ''"
@@ -299,20 +334,10 @@ function fmtMoney(n: number): string {
           <p class="text-sm text-muted-foreground">Резерв</p>
           <p
             class="text-2xl font-bold tabular-nums"
-            :class="reserveState.below ? 'text-warning' : 'text-cyan-500'"
+            :class="reserveState.below ? 'text-warning' : 'text-primary'"
           >
             {{ kpi.reserve }} / {{ reserveState.norm }}
           </p>
-        </CardContent>
-      </Card>
-      <Card
-        class="kpi-clickable"
-        title="Роботы на зарядке. Период: сейчас."
-        @click="router.push('/robots')"
-      >
-        <CardContent class="p-4">
-          <p class="text-sm text-muted-foreground">Зарядка</p>
-          <p class="text-2xl font-bold tabular-nums">{{ kpi.charging }}</p>
         </CardContent>
       </Card>
       <Card
@@ -323,21 +348,6 @@ function fmtMoney(n: number): string {
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Сервис / авария</p>
           <p class="text-2xl font-bold tabular-nums text-warning">{{ kpi.service }}</p>
-        </CardContent>
-      </Card>
-      <Card
-        class="kpi-clickable"
-        title="Незакрытые инциденты объекта. Период: 30 дней."
-        @click="router.push('/incidents')"
-      >
-        <CardContent class="p-4">
-          <p class="text-sm text-muted-foreground">Активные инциденты</p>
-          <p
-            class="text-2xl font-bold tabular-nums"
-            :class="kpi.activeIncidents > 0 ? 'text-orange-500' : ''"
-          >
-            {{ kpi.activeIncidents }}
-          </p>
         </CardContent>
       </Card>
     </div>
@@ -383,7 +393,7 @@ function fmtMoney(n: number): string {
                   {{ z.deficit > 0 ? `−${z.deficit} ед.` : '—' }}
                 </td>
                 <td class="py-2.5 pr-4 tabular-nums">
-                  <span v-if="z.activeIncidents > 0" class="text-orange-500"
+                  <span v-if="z.activeIncidents > 0" class="text-destructive"
                     >{{ z.activeIncidents }} активных</span
                   >
                   <span v-else class="text-muted-foreground">нет</span>

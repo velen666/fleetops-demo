@@ -31,7 +31,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Download } from 'lucide-vue-next'
+import { ArrowRight, Download, TrendingDown } from 'lucide-vue-next'
 import { downloadCsv } from '@/lib/csv'
 import {
   Select,
@@ -249,6 +249,21 @@ const causeChartLabels = computed(() =>
 )
 const causeChartData = computed(() => causeRows.value.map((r) => r.loss))
 
+const executiveInsight = computed(() => {
+  const cause = causeRows.value[0]
+  if (!cause)
+    return {
+      title: 'Подтверждённых потерь в выбранном срезе нет',
+      detail: 'Измените фильтры, чтобы изучить другой участок портфеля.',
+      causeCode: null,
+    }
+  return {
+    title: `${cause.name} — ${cause.loss.toLocaleString('ru-RU')} ₽ подтверждённых потерь`,
+    detail: `${cause.count} случаев · ${cause.sitesCount} объекта · ${cause.zonesCount} зон. Откройте причину, чтобы перейти к инцидентам и доказательствам.`,
+    causeCode: cause.code,
+  }
+})
+
 // ─── 32.4 Разделение: потери по объектам / по зонам ответственности ──────────
 
 const siteLossRows = computed(() =>
@@ -272,11 +287,11 @@ const siteLossRows = computed(() =>
 )
 
 const zoneColors: Record<string, string> = {
-  OPERATIONS: '#ff6b6b',
-  IT: '#00a0e9',
-  SERVICE: '#fcd34d',
-  INFRASTRUCTURE: '#10b981',
-  UNKNOWN: '#64748b',
+  OPERATIONS: '--chart-5',
+  IT: '--chart-1',
+  SERVICE: '--chart-2',
+  INFRASTRUCTURE: '--chart-4',
+  UNKNOWN: '--muted-foreground',
 }
 
 const zoneLossRows = computed(() => {
@@ -302,7 +317,7 @@ const siteZoneDatasets = computed(() => {
   const zones = [...new Set(zoneLossRows.value.map((r) => r.zone))]
   return zones.map((zone) => ({
     label: RESPONSIBILITY_ZONE_RU[zone] ?? zone,
-    color: zoneColors[zone] ?? '#64748b',
+    color: zoneColors[zone] ?? '--muted-foreground',
     data: siteLossRows.value.map((site) =>
       selectionImpact.value
         .filter((d) => {
@@ -491,75 +506,110 @@ function exportBreakdownCsv(): void {
 
 <template>
   <div class="space-y-6">
-    <!-- 32.1 Фильтры + представления -->
-    <div class="flex flex-wrap items-end gap-3">
-      <div class="flex gap-1 rounded-lg border border-border p-1">
+    <section class="page-hero p-5 sm:p-6">
+      <div class="flex flex-wrap items-start justify-between gap-5">
+        <div class="max-w-3xl">
+          <p class="eyebrow mb-2">Управленческий вывод · подтверждённые данные</p>
+          <h2 class="text-balance text-2xl font-bold tracking-tight">
+            {{ executiveInsight.title }}
+          </h2>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">{{ executiveInsight.detail }}</p>
+        </div>
+        <div class="flex items-center gap-2 text-sm text-muted-foreground">
+          <TrendingDown class="size-4 text-destructive" />
+          {{ kpis.confirmedLoss.toLocaleString('ru-RU') }} ₽
+        </div>
+      </div>
+      <div
+        class="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-4"
+      >
+        <p class="text-xs text-muted-foreground">
+          Ремонт {{ kpis.repairCost.toLocaleString('ru-RU') }} ₽ отдельно от потерь · резерв
+          {{ kpis.reserveBelow.length > 0 ? 'ниже норматива' : 'в норме' }}
+        </p>
         <Button
-          v-for="v in [
-            { key: 'site', label: 'Объект' },
-            { key: 'fleet', label: 'Роботопарк' },
-            { key: 'econ', label: 'Экономика' },
-          ]"
-          :key="v.key"
-          :variant="view === v.key ? 'default' : 'ghost'"
+          v-if="executiveInsight.causeCode"
           size="sm"
-          class="min-h-8 h-8"
-          @click="view = v.key as typeof view"
-          >{{ v.label }}</Button
+          @click="openCauseDetail(executiveInsight.causeCode)"
         >
+          Открыть доказательства <ArrowRight class="size-4" />
+        </Button>
       </div>
-      <div class="space-y-1">
-        <span class="text-xs text-muted-foreground block">Объект</span>
-        <Select v-model="filterSite" aria-label="Фильтр по объекту">
-          <SelectTrigger class="w-[180px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Все объекты</SelectItem>
-            <SelectItem v-for="s in scopedSites" :key="s.id" :value="s.id">{{ s.name }}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div class="space-y-1">
-        <span class="text-xs text-muted-foreground block">Причина</span>
-        <Select v-model="filterCause" aria-label="Фильтр по причине">
-          <SelectTrigger class="w-[220px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Все причины</SelectItem>
-            <SelectItem v-for="c in causeOptions" :key="c" :value="c">{{
-              causeLabel(c)
-            }}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div class="space-y-1">
-        <span class="text-xs text-muted-foreground block">Зона ответственности</span>
-        <Select v-model="filterZone" aria-label="Фильтр по зоне ответственности">
-          <SelectTrigger class="w-[180px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Все зоны</SelectItem>
-            <SelectItem value="OPERATIONS">Эксплуатация склада</SelectItem>
-            <SelectItem value="IT">ИТ-инфраструктура</SelectItem>
-            <SelectItem value="SERVICE">Сервис</SelectItem>
-            <SelectItem value="INFRASTRUCTURE">Инфраструктура</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div class="space-y-1">
-        <span class="text-xs text-muted-foreground block">Робот</span>
-        <Select v-model="filterRobot" aria-label="Фильтр по роботу">
-          <SelectTrigger class="w-[150px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Все</SelectItem>
-            <SelectItem v-for="r in robotOptions" :key="r.id" :value="r.id">{{
-              r.name
-            }}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-    </div>
+    </section>
+
+    <!-- 32.1 Фильтры + представления -->
+    <Card tone="data" density="compact">
+      <CardContent class="flex flex-wrap items-end gap-3">
+        <div class="flex gap-1 rounded-lg border border-border p-1">
+          <Button
+            v-for="v in [
+              { key: 'site', label: 'Объект' },
+              { key: 'fleet', label: 'Роботопарк' },
+              { key: 'econ', label: 'Экономика' },
+            ]"
+            :key="v.key"
+            :variant="view === v.key ? 'default' : 'ghost'"
+            size="sm"
+            class="min-h-8 h-8"
+            @click="view = v.key as typeof view"
+            >{{ v.label }}</Button
+          >
+        </div>
+        <div class="space-y-1">
+          <span class="text-xs text-muted-foreground block">Объект</span>
+          <Select v-model="filterSite" aria-label="Фильтр по объекту">
+            <SelectTrigger class="w-[180px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все объекты</SelectItem>
+              <SelectItem v-for="s in scopedSites" :key="s.id" :value="s.id">{{
+                s.name
+              }}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div class="space-y-1">
+          <span class="text-xs text-muted-foreground block">Причина</span>
+          <Select v-model="filterCause" aria-label="Фильтр по причине">
+            <SelectTrigger class="w-[220px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все причины</SelectItem>
+              <SelectItem v-for="c in causeOptions" :key="c" :value="c">{{
+                causeLabel(c)
+              }}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div class="space-y-1">
+          <span class="text-xs text-muted-foreground block">Зона ответственности</span>
+          <Select v-model="filterZone" aria-label="Фильтр по зоне ответственности">
+            <SelectTrigger class="w-[180px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все зоны</SelectItem>
+              <SelectItem value="OPERATIONS">Эксплуатация склада</SelectItem>
+              <SelectItem value="IT">ИТ-инфраструктура</SelectItem>
+              <SelectItem value="SERVICE">Сервис</SelectItem>
+              <SelectItem value="INFRASTRUCTURE">Инфраструктура</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div class="space-y-1">
+          <span class="text-xs text-muted-foreground block">Робот</span>
+          <Select v-model="filterRobot" aria-label="Фильтр по роботу">
+            <SelectTrigger class="w-[150px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все</SelectItem>
+              <SelectItem v-for="r in robotOptions" :key="r.id" :value="r.id">{{
+                r.name
+              }}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </CardContent>
+    </Card>
 
     <!-- 32.2 Верхняя сводка (ТЗ v2.0 §9.2) -->
-    <div class="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
-      <Card>
+    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <Card tone="data" density="compact">
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Техническая доступность</p>
           <p class="text-2xl font-bold tabular-nums text-success">
@@ -577,7 +627,7 @@ function exportBreakdownCsv(): void {
           </p>
         </CardContent>
       </Card>
-      <Card>
+      <Card tone="data" density="compact">
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Операционная доступность мощности</p>
           <p class="text-2xl font-bold tabular-nums text-success">
@@ -594,7 +644,7 @@ function exportBreakdownCsv(): void {
           </p>
         </CardContent>
       </Card>
-      <Card>
+      <Card tone="data" density="compact">
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Потери процесса</p>
           <p class="text-2xl font-bold tabular-nums text-destructive">
@@ -605,7 +655,7 @@ function exportBreakdownCsv(): void {
           </p>
         </CardContent>
       </Card>
-      <Card>
+      <Card tone="data" density="compact">
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Стоимость ремонта</p>
           <p class="text-2xl font-bold tabular-nums">
@@ -616,7 +666,7 @@ function exportBreakdownCsv(): void {
           </p>
         </CardContent>
       </Card>
-      <Card>
+      <Card tone="data" density="compact">
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Инциденты и бэклог</p>
           <p class="text-2xl font-bold tabular-nums">
@@ -631,7 +681,11 @@ function exportBreakdownCsv(): void {
           </p>
         </CardContent>
       </Card>
-      <Card :class="kpis.reserveBelow.length > 0 ? 'border-warning/40' : ''">
+      <Card
+        tone="data"
+        density="compact"
+        :class="kpis.reserveBelow.length > 0 ? 'border-warning/40' : ''"
+      >
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Резерв ниже норматива</p>
           <p
@@ -702,7 +756,7 @@ function exportBreakdownCsv(): void {
           <ChartCard
             type="bar"
             :labels="repeatChartLabels"
-            :datasets="[{ label: 'Случаев', data: repeatChartData, color: '#f97316' }]"
+            :datasets="[{ label: 'Случаев', data: repeatChartData, color: '--chart-2' }]"
             suffix=" сл."
           />
           <Table class="mt-3">

@@ -4,7 +4,7 @@ import { useDemoData, type NextStep } from '@/composables/useDemoData'
 import { useTenantScope } from '@/composables/useTenantScope'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { AlertTriangle, TrendingDown, ArrowRight, Activity } from 'lucide-vue-next'
+import { ArrowRight } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { CAUSE_CATALOG } from '@/data/generator'
 import { impactSeconds, techAvailabilityPct, powerAvailabilityPct } from '@/data/metrics'
@@ -145,6 +145,45 @@ const fleetKpis = computed(() => {
   }
 })
 
+const primaryKpis = computed<
+  Array<{
+    label: string
+    value: string
+    detail: string
+    valueClass: string
+    to: 'analytics' | 'maintenance'
+  }>
+>(() => [
+  {
+    label: 'Техническая доступность',
+    value: `${fleetKpis.value.techAvailability.toFixed(2)}%`,
+    detail: 'парк × 8 ч × 30 дней',
+    valueClass: 'text-success',
+    to: 'analytics',
+  },
+  {
+    label: 'Операционная доступность',
+    value: `${fleetKpis.value.powerAvailability.toFixed(2)}%`,
+    detail: 'мощность зон',
+    valueClass: 'text-success',
+    to: 'analytics',
+  },
+  {
+    label: 'Подтверждённые потери',
+    value: `${fmtMoney(fleetKpis.value.loss)} ₽`,
+    detail: 'только подтверждённое влияние',
+    valueClass: 'text-destructive',
+    to: 'analytics',
+  },
+  {
+    label: 'Просрочено ТОиР',
+    value: String(fleetKpis.value.overdue),
+    detail: 'работ требует контроля',
+    valueClass: fleetKpis.value.overdue > 0 ? 'text-destructive' : 'text-success',
+    to: 'maintenance',
+  },
+])
+
 /** Системные причины: повторяются на ≥2 объектах (Отчёт §10.4 строка 5). */
 const systemicCauses = computed(() => {
   const map = new Map<string, { code: string; count: number; loss: number; sites: Set<string> }>()
@@ -179,8 +218,8 @@ function goSite(id: string): void {
 function goIncident(id: string): void {
   router.push({ name: 'incident-details', params: { incidentId: id } })
 }
-function goAnalytics(): void {
-  router.push({ name: 'analytics' })
+function goKpi(routeName: 'analytics' | 'maintenance'): void {
+  router.push({ name: routeName })
 }
 
 function fmtMoney(n: number): string {
@@ -200,16 +239,23 @@ const VERDICT_RU: Record<SiteCard['verdict'], string> = {
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div class="space-y-6">
     <!-- Строка 1: портфельный вердикт -->
-    <Card class="border-primary/30">
-      <CardContent class="p-5 space-y-2">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p class="text-xs text-muted-foreground">Портфель роботизации · 30 дней</p>
-            <p class="text-2xl font-bold">{{ portfolioVerdict.label }}</p>
+    <Card tone="decision" density="spacious" class="page-hero">
+      <CardContent class="space-y-5">
+        <div class="flex flex-wrap items-start justify-between gap-5">
+          <div class="max-w-2xl">
+            <p class="eyebrow mb-2">Управленческий вердикт · 30 дней</p>
+            <h2 class="text-balance text-3xl font-bold tracking-tight">
+              {{ portfolioVerdict.label }}
+            </h2>
+            <p v-if="portfolioVerdict.worst" class="mt-3 text-sm leading-6 text-muted-foreground">
+              Главное отклонение: {{ portfolioVerdict.worst.name }} —
+              {{ fmtMoney(portfolioVerdict.worst.loss) }} ₽ подтверждённых потерь и
+              {{ portfolioVerdict.worst.activeIncidents }} активных инцидентов.
+            </p>
           </div>
-          <div class="flex gap-6 text-sm">
+          <div class="grid min-w-[17rem] grid-cols-2 gap-x-7 gap-y-4 text-sm sm:grid-cols-4">
             <div>
               <p class="text-xs text-muted-foreground">В норме</p>
               <p class="font-bold tabular-nums text-success">{{ portfolioVerdict.normal }}</p>
@@ -230,95 +276,46 @@ const VERDICT_RU: Record<SiteCard['verdict'], string> = {
             </div>
           </div>
         </div>
-        <p v-if="portfolioVerdict.worst" class="text-sm text-muted-foreground">
-          Главное отклонение: {{ portfolioVerdict.worst.name }} —
-          {{ fmtMoney(portfolioVerdict.worst.loss) }} ₽ потерь,
-          {{ portfolioVerdict.worst.activeIncidents }} активных инцидентов.
+        <div
+          class="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-4"
+        >
+          <p class="text-xs text-muted-foreground">
+            Контур: MTTR {{ fleetKpis.mttrHours.toFixed(1) }} ч · сервисный бэклог
+            {{ fleetKpis.backlog }} · активных инцидентов {{ portfolioVerdict.decisions }}
+          </p>
           <Button
-            variant="link"
-            class="h-auto p-0 text-sm"
+            v-if="portfolioVerdict.worst"
+            size="sm"
             @click="goSite(portfolioVerdict.worst.id)"
-            >Открыть объект <ArrowRight class="size-3.5 ml-1"
-          /></Button>
-        </p>
+          >
+            Открыть объект <ArrowRight class="size-4" />
+          </Button>
+        </div>
       </CardContent>
     </Card>
 
     <!-- Строка 2: ключевые показатели портфеля -->
-    <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
-      <Card class="kpi-clickable" @click="goAnalytics">
-        <CardContent class="p-4">
-          <p class="text-xs text-muted-foreground flex items-center gap-1">
-            <Activity class="size-3" /> Техническая доступность
-          </p>
-          <p class="text-xl font-bold tabular-nums text-success">
-            {{ fleetKpis.techAvailability.toFixed(2) }}%
-          </p>
-          <p class="text-[10px] text-muted-foreground">парк × 8 ч × 30 дней</p>
-        </CardContent>
-      </Card>
-      <Card class="kpi-clickable" @click="goAnalytics">
-        <CardContent class="p-4">
-          <p class="text-xs text-muted-foreground">Операционная доступность</p>
-          <p class="text-xl font-bold tabular-nums text-success">
-            {{ fleetKpis.powerAvailability.toFixed(2) }}%
-          </p>
-          <p class="text-[10px] text-muted-foreground">мощность зон</p>
-        </CardContent>
-      </Card>
-      <Card class="kpi-clickable" @click="goAnalytics">
-        <CardContent class="p-4">
-          <p class="text-xs text-muted-foreground">MTTR</p>
-          <p class="text-xl font-bold tabular-nums">{{ fleetKpis.mttrHours.toFixed(1) }} ч</p>
-          <p class="text-[10px] text-muted-foreground">
-            по {{ fleetKpis.mttrCount }} закрытым инцидентам
-          </p>
-        </CardContent>
-      </Card>
-      <Card class="kpi-clickable" @click="router.push({ name: 'maintenance' })">
-        <CardContent class="p-4">
-          <p class="text-xs text-muted-foreground">Сервисный бэклог</p>
-          <p class="text-xl font-bold tabular-nums">{{ fleetKpis.backlog }}</p>
-          <p class="text-[10px] text-muted-foreground">работ в контуре</p>
-        </CardContent>
-      </Card>
-      <Card class="kpi-clickable" @click="router.push({ name: 'maintenance' })">
-        <CardContent class="p-4">
-          <p class="text-xs text-muted-foreground flex items-center gap-1">
-            <AlertTriangle class="size-3" /> Просрочено ТОиР
-          </p>
-          <p
-            class="text-xl font-bold tabular-nums"
-            :class="fleetKpis.overdue > 0 ? 'text-destructive' : ''"
-          >
-            {{ fleetKpis.overdue }}
-          </p>
-        </CardContent>
-      </Card>
-      <Card class="kpi-clickable" @click="goAnalytics">
-        <CardContent class="p-4">
-          <p class="text-xs text-muted-foreground flex items-center gap-1">
-            <TrendingDown class="size-3" /> Подтверждённые потери
-          </p>
-          <p class="text-xl font-bold tabular-nums text-destructive">
-            {{ fmtMoney(fleetKpis.loss) }} ₽
-          </p>
-        </CardContent>
-      </Card>
-      <Card class="kpi-clickable" @click="router.push({ name: 'incidents' })">
-        <CardContent class="p-4">
-          <p class="text-xs text-muted-foreground">Активные инциденты</p>
-          <p class="text-xl font-bold tabular-nums">{{ portfolioVerdict.decisions }}</p>
-        </CardContent>
-      </Card>
+    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <Button
+        v-for="kpi in primaryKpis"
+        :key="kpi.label"
+        variant="outline"
+        class="card-data kpi-clickable h-auto min-h-30 flex-col items-start justify-center gap-1 p-4 text-left"
+        @click="goKpi(kpi.to)"
+      >
+        <span class="text-xs font-medium text-muted-foreground">{{ kpi.label }}</span>
+        <span class="text-2xl font-bold tabular-nums" :class="kpi.valueClass">{{ kpi.value }}</span>
+        <span class="text-xs font-normal text-muted-foreground">{{ kpi.detail }}</span>
+      </Button>
     </div>
 
     <!-- Строка 3: карточки объектов -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-      <Card
+      <Button
         v-for="c in siteCards"
         :key="c.id"
-        class="kpi-clickable hover:border-primary/40"
+        variant="outline"
+        class="card-data kpi-clickable h-auto flex-col items-stretch gap-0 overflow-hidden p-0 text-left hover:border-primary/40"
         @click="goSite(c.id)"
       >
         <CardHeader class="pb-2">
@@ -350,7 +347,7 @@ const VERDICT_RU: Record<SiteCard['verdict'], string> = {
             Активных инцидентов: {{ c.activeIncidents }} · бэклог: {{ c.backlog }}
           </p>
         </CardContent>
-      </Card>
+      </Button>
     </div>
 
     <!-- Строка 5: системные причины -->

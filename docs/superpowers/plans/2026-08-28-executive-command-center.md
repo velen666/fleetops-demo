@@ -180,7 +180,7 @@ git commit -m "demo: modernize dashboard shell and chart theming"
 - Consumes current portfolio verdict/site cards, My Site attention/zone data and analytics loss/cause computations.
 - Produces existing-router drill-down actions only; no state mutation or calculation.
 
-- [ ] **Step 1: Write display-only predicates**
+- [x] **Step 1: Write display-only predicates**
 
 ```ts
 const primarySite = computed(() => siteCards.value[0] ?? null)
@@ -189,7 +189,7 @@ const visiblePortfolioKpis = computed(() => portfolioKpis.value.slice(0, 4))
 
 For My Site derive the first existing needsAttention item and a matching zone/reserve message. For Analytics derive top existing confirmed cause and affected site count. Do not call any store mutation.
 
-- [ ] **Step 2: Type-check display models**
+- [x] **Step 2: Type-check display models**
 
 ```powershell
 npm run type-check
@@ -197,7 +197,7 @@ npm run type-check
 
 Expected: display models compile without changing data contracts.
 
-- [ ] **Step 3: Compose decision heroes and bounded KPI rows**
+- [x] **Step 3: Compose decision heroes and bounded KPI rows**
 
 ```vue
 <section class="page-hero">
@@ -211,7 +211,7 @@ Expected: display models compile without changing data contracts.
 
 Portfolio shows four top decision signals. My Site begins with Operations Pulse and an existing incident/zone drill-down. Analytics begins with existing cause/loss insight; filters, charts and all evidence remain below it.
 
-- [ ] **Step 4: Verify scope and page quality**
+- [x] **Step 4: Verify scope and page quality**
 
 ```powershell
 npm run lint
@@ -221,7 +221,7 @@ git diff --name-only -- src/data src/composables src/router
 
 Expected: page checks pass; no generator, metric, role, guard or router contract changed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/pages/PortfolioPage.vue src/pages/MySitePage.vue src/pages/AnalyticsPage.vue
