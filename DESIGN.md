@@ -12,7 +12,7 @@ FleetOps Admin — enterprise dashboard для управления автопа
 **Ключевые характеристики**
 
 - **Dark-first**: тёмная тема — основное состояние приложения, светлая — парная альтернатива.
-- **Glassmorphism**: карточки и панели верхнего уровня — полупрозрачные с `backdrop-filter: blur()`, тонким gradient-border и inset-подсветкой верхнего ребра.
+- **Glassmorphism**: карточки и панели верхнего уровня — полупрозрачные с `backdrop-filter: blur()`, тонкой полупрозрачной рамкой (radius-safe `color-mix`) и inset-подсветкой верхнего ребра.
 - **Градиенты вместо плоских акцентов**: primary CTA, hero-фон, focus ring, status glow используют градиентные токены (compose из brand/accent цветов).
 - **Brand blue как якорь**: во всех 4 темах primary — `#00A0E9` (light) / `#38BDF8` (dark). Темы различаются только accent-парой, что меняет характер градиентов и не ломает бренд.
 - **Контрастная типографика Montserrat**: одна семья, иерархия через size+weight.
@@ -32,7 +32,7 @@ L1 — brand raw (HEX/OKLCH константы)
 
 L2 — semantic shadcn tokens (алиасы)
      --primary, --accent, --card, --background, --ring ...
-     Переопределяются по измерениям: data-theme и .dark
+     Переопределяются по режимам: .dark (тема одна — Ocean)
      Эти токены потребляются shadcn-vue/reka-ui компонентами и утилитами Tailwind v4.
 
 L3 — gradient & glass tokens (compose L1/L2)
@@ -40,36 +40,37 @@ L3 — gradient & glass tokens (compose L1/L2)
      Используют color-mix(in oklch, ...) для автоматической адаптации под активную тему.
 ```
 
-### Измерение 1: `data-theme` (4 значения)
+### Тема: Ocean (единственная)
 
-| `data-theme`                      | Название     | Primary               | Accent 1              | Accent 2              | Характер                                                 |
-| --------------------------------- | ------------ | --------------------- | --------------------- | --------------------- | -------------------------------------------------------- |
-| `blue`                            | Brand Mono   | `#00A0E9` / `#38BDF8` | —                     | —                     | Чистый бренд. Базовый вариант.                           |
-| `blue-cyan-violet` ⭐ **default** | Tech Linear  | `#00A0E9` / `#38BDF8` | `#22D3EE` / `#67E8F9` | `#7C3AED` / `#A78BFA` | Контрастный, технологичный (Linear/Vercel-вайб).         |
-| `blue-teal`                       | Fleet Nature | `#00A0E9` / `#38BDF8` | `#10B981` / `#34D399` | —                     | Природный accent; визуально разделён со status-green.    |
-| `blue-magenta`                    | Brand Bold   | `#00A0E9` / `#38BDF8` | `#EC4899` / `#F472B6` | —                     | Смелый, брендо-выразительный. Осторожно на data-density. |
+Исторически измерение `data-theme` содержало 4-5 палитр; по решению итерации 2026-08 палитры сокращены до одной — **Ocean**. `data-theme` атрибут больше не используется; значения Ocean зашиты в `:root` (light) и `.dark` (dark) в `src/assets/styles/style.css`.
 
-Формат записи: `light HEX / dark HEX`.
+| Токен    | Light     | Dark      |
+| -------- | --------- | --------- |
+| Primary  | `#00A0E9` | `#38BDF8` |
+| Accent 1 | `#2DD4BF` | `#5EEAD4` |
+| Accent 2 | `#22D3EE` | `#67E8F9` |
+
+Характер: морская бирюза, спокойная технологичная тема с glassmorphism. Primary gradient — проработанный бирюзовый: `--gradient-primary: linear-gradient(135deg, accent 0%, accent-2 55%, primary 100%)`.
 
 ### Измерение 2: `.dark` класс
 
-Тёмный режим активируется классом `.dark` на `<html>`. Светлый — отсутствие класса. Применяется поверх активной `data-theme` (композиция `[data-theme="..."].dark, [data-theme="..."].dark *`).
+Тёмный режим активируется классом `.dark` на `<html>`. Светлый — отсутствие класса.
 
 ### Состояние по умолчанию
 
 ```html
-<html lang="ru" class="dark" data-theme="blue-cyan-violet"></html>
+<html lang="ru" class="dark"></html>
 ```
 
 В `index.html` встроен inline-скрипт prevention-of-flash:
 
-- Читает `localStorage['theme']` (`'light' | 'dark'`) и `localStorage['theme-palette']` (один из 4 ключей).
-- При отсутствии значений применяет дефолт: `class="dark" data-theme="blue-cyan-violet"`.
+- Читает `localStorage['theme']` (`'light' | 'dark'`).
+- При отсутствии значения применяет дефолт: `class="dark"`.
 - `prefers-color-scheme` **не используется** для auto-detection — dark default заявлен явно.
 
-### UI switcher (out of scope текущей итерации)
+### UI switcher (реализован)
 
-Переключатель тем (dropdown в header, `useTheme()` composable, персистентность в localStorage) — отдельная задача демо-плана. Текущая итерация описывает токены и spec; переключение вручную через devtools или будущий UI.
+Переключатель (`ThemeSwitcher.vue` + `useTheme()`) в сайдбаре: одна кнопка «Светлая/Тёмная тема». Персистентность: `localStorage['theme']` (ключ читает inline-скрипт в `index.html` для prevention-of-flash). Ключ `theme-palette` больше не используется.
 
 ---
 
@@ -87,14 +88,12 @@ L3 — gradient & glass tokens (compose L1/L2)
 | `--brand-blue-400` | `#5ABEE6` | `#7DD3FC` | Lighter primary layer                |
 | `--brand-blue-450` | `#00AEEF` | `#38BDF8` | Extended brand variant               |
 
-#### Accents (L1, используются только темами, которые их включают)
+#### Accents (L1, тема Ocean)
 
-| Token                 | Light     | Dark      | Включён в темы     |
-| --------------------- | --------- | --------- | ------------------ |
-| `--brand-cyan-400`    | `#22D3EE` | `#67E8F9` | `blue-cyan-violet` |
-| `--brand-violet-500`  | `#7C3AED` | `#A78BFA` | `blue-cyan-violet` |
-| `--brand-teal-500`    | `#10B981` | `#34D399` | `blue-teal`        |
-| `--brand-magenta-500` | `#EC4899` | `#F472B6` | `blue-magenta`     |
+| Token               | Light     | Dark      | Роль                             |
+| ------------------- | --------- | --------- | -------------------------------- |
+| `--brand-ocean-400` | `#2DD4BF` | `#5EEAD4` | `--accent` (бирюзовый якорь)     |
+| `--brand-cyan-400`  | `#22D3EE` | `#67E8F9` | `--accent-2` (переход градиента) |
 
 #### Neutral scale (L1, общая для всех тем, oklch)
 
@@ -120,29 +119,27 @@ L3 — gradient & glass tokens (compose L1/L2)
 | `--status-warning-alt` | `#FCD34D`                                                                | Lighter warning                 |
 | `--status-destructive` | `oklch(0.577 0.245 27.325)` (light) / `oklch(0.704 0.191 22.216)` (dark) | Error / destructive (из shadcn) |
 
-### 3.2. Semantic tokens (L2, по темам)
+### 3.2. Semantic tokens (L2, тема Ocean)
 
-Каждая тема определяет следующий набор L2 алиасов (показан default; полный перечень для каждой темы — в `src/assets/styles/style.css`):
+Тема Ocean (единственная) определяет набор L2 алиасов в `:root` (light) и `.dark` (dark):
 
 ```css
-[data-theme='blue-cyan-violet'] {
+:root {
   --primary: var(--brand-blue-500);
   --primary-foreground: oklch(0.985 0 0);
-  --accent: var(--brand-cyan-400);
+  --accent: var(--brand-ocean-400);
   --accent-foreground: oklch(0.145 0 0);
-  --accent-2: var(--brand-violet-500); /* опциональный, есть только в violet-теме */
+  --accent-2: var(--brand-cyan-400);
   --ring: var(--brand-blue-500);
   --chart-1: var(--brand-blue-500);
-  --chart-2: var(--brand-cyan-400);
-  --chart-3: var(--brand-violet-500);
-  --chart-4: var(--brand-teal-500);
-  --chart-5: var(--brand-magenta-500);
+  --chart-2: var(--brand-ocean-400);
+  --chart-3: var(--brand-cyan-400);
+  --chart-4: var(--brand-blue-450);
+  --chart-5: var(--brand-blue-700);
 }
 ```
 
-В темах без собственного accent-2 (`blue-teal`, `blue-magenta`) токен `--accent-2` явно алиасится на `var(--primary)` для согласованности каскада. Монохромная `blue` тема использует `--accent-2: var(--brand-blue-450)` (distinct brand shade, см. ниже) для визуального разнообразия графиков и hero-градиента. В `--gradient-hero` сохранён синтаксис `var(--accent-2, var(--primary))` как defensive fallback на случай удаления алиаса в будущем.
-
-В монохромной теме `blue` без отдельного accent-цвета, `--accent` алиасится на `var(--brand-blue-400)` (lighter primary variant), чтобы `--gradient-primary` давал осмысленный blue→light-blue градиент, а не деградировал в плоский цвет. Аналогично `--chart-2..5` в `blue` теме берутся из шкалы `--brand-blue-450/400/600/700` для визуального разнообразия графиков.
+Dark-режим переопределяет только цветные токены (`--primary: #38bdf8`, `--accent: #5eead4`, `--accent-2: #67e8f9`, `--chart-1..5`); нейтральные поверхности инвертируются в `.dark` (см. `src/assets/styles/style.css`).
 
 Полный L2-перечень (общий каркас, общий для всех тем): `--background`, `--foreground`, `--card`, `--card-foreground`, `--popover`, `--popover-foreground`, `--primary`, `--primary-foreground`, `--secondary`, `--secondary-foreground`, `--muted`, `--muted-foreground`, `--accent`, `--accent-foreground`, `--accent-2`, `--destructive`, `--border`, `--input`, `--ring`, `--chart-1..5`, все `--sidebar-*`, `--radius`, `--shadow-*` (см. §6.2).
 
@@ -152,8 +149,14 @@ L3 — gradient & glass tokens (compose L1/L2)
 
 ```css
 :root {
-  /* Основные градиенты для CTAs и акцентных поверхностей */
-  --gradient-primary: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+  /* Основные градиенты для CTAs и акцентных поверхностей:
+     проработанный бирюзовый (ocean → cyan → brand blue) */
+  --gradient-primary: linear-gradient(
+    135deg,
+    var(--accent) 0%,
+    var(--accent-2) 55%,
+    var(--primary) 100%
+  );
 
   /* Радиальный glow — для подсветки под hero, primary CTAs, focus ring фона */
   --gradient-glow: radial-gradient(
@@ -176,11 +179,11 @@ L3 — gradient & glass tokens (compose L1/L2)
     color-mix(in oklch, var(--foreground) 4%, transparent) 100%
   );
 
-  /* Hero / app background — мягкое цветное пятно вверху */
+  /* Hero / app background — мягкое цветное пятно вверху (primary, hue-safe через transparent) */
   --gradient-hero: radial-gradient(
     120% 80% at 50% 0%,
-    color-mix(in oklch, var(--accent-2, var(--primary)) 18%, var(--background)) 0%,
-    var(--background) 70%
+    color-mix(in oklch, var(--primary) 12%, transparent) 0%,
+    transparent 70%
   );
 }
 ```
@@ -193,13 +196,11 @@ L3 — gradient & glass tokens (compose L1/L2)
 | ---------------------------------------------------------- | ------------------------------------------------ | ------------------------------------------- |
 | `--primary` blue-500 (`#00A0E9`)                           | 3.2:1 ⚠ (только для ≥18px/UI — не для body text) | `#38BDF8` → 9.8:1 ✅                        |
 | `--primary-foreground` (`oklch(0.985 0 0)`) на `--primary` | 4.6:1 ✅                                         | 11.2:1 ✅                                   |
-| `--accent` cyan (`#22D3EE`)                                | 1.8:1 ❌ (только для ≥18px/decorative)           | `#67E8F9` → 9.1:1 ✅                        |
-| `--accent` teal (`#10B981`)                                | 2.6:1 ❌ (только для ≥18px/decorative)           | `#34D399` → 7.4:1 ✅                        |
-| `--accent` magenta (`#EC4899`)                             | 3.4:1 ⚠ (только для ≥18px/UI)                    | `#F472B6` → 6.8:1 ✅                        |
-| `--accent-2` violet (`#7C3AED`)                            | 5.4:1 ✅                                         | `#A78BFA` → 5.9:1 ✅                        |
+| `--accent` ocean (`#2DD4BF`)                               | 1.9:1 ❌ (только для ≥18px/decorative)           | `#5EEAD4` → 10.5:1 ✅                       |
+| `--accent-2` cyan (`#22D3EE`)                              | 1.8:1 ❌ (только для ≥18px/decorative)           | `#67E8F9` → 9.1:1 ✅                        |
 | `--foreground` (`#1E293B` / `oklch(0.985 0 0)`)            | 14.5:1 ✅                                        | 14.5:1 ✅                                   |
 
-**Правило:** accent-цвета (`cyan`, `teal`, `magenta`) в light-режиме не использовать для body text — только для крупного UI (≥18px), декоративных градиентов, иконок, status-индикаторов. Для текста-ссылок в light использовать `--primary` или darker variant (`--brand-blue-600`). В dark-режиме все accent-цвета пригодны для текста.
+**Правило:** accent-цвета (`ocean`, `cyan`) в light-режиме не использовать для body text — только для крупного UI (≥18px), декоративных градиентов, иконок, status-индикаторов. Для текста-ссылок в light использовать `--primary` или darker variant (`--brand-blue-600`). В dark-режиме все accent-цвета пригодны для текста.
 
 ---
 
@@ -320,13 +321,14 @@ Line-height сохраняет пропорции.
 
 #### Standard Glass Card
 
+Бирюзовое стекло (soft): фон — `--gradient-glass` (accent 8%→2%, деликатный tint), рамка — accent 12%. Насыщенный бирюзовый остаётся только на бренд-плитке логотипа и primary CTA. `border-image` не используется: border-image игнорирует `border-radius` и даёт квадратные углы.
+
 ```css
 .card-glass {
-  background: var(--gradient-surface);
+  background: var(--gradient-glass);
   backdrop-filter: blur(16px) saturate(140%);
   -webkit-backdrop-filter: blur(16px) saturate(140%);
-  border: 1px solid; /* gradient-border через border-image */
-  border-image: var(--gradient-border) 1;
+  border: 1px solid color-mix(in oklch, var(--accent) 12%, transparent);
   border-radius: 24px;
   padding: 32px;
   box-shadow: var(--shadow-glass);
@@ -412,20 +414,23 @@ Line-height сохраняет пропорции.
 
 Base unit 4px. Scale: 4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 72, 88.
 
-### 6.2. Тени (расширение секции 6 источника)
+### 6.2. Тени (единая мягкая элевация, без визуального «подрыва» карточек)
+
+Все карточки (вкл. таблицы) на одном уровне: `[data-slot='card'] { box-shadow: var(--shadow-card) }`. Glass-карточки получают `--shadow-glass` (inset-хайлайт + та же мягкая глубина). Тени уменьшены относительно прошлой итерации (было 12px/36px — стало 2px/10px).
 
 ```css
 :root {
   --shadow-flat: none;
-  --shadow-sm: rgba(0, 0, 0, 0.04) 0px 4px 24px 0px;
+  --shadow-sm: rgba(0, 0, 0, 0.04) 0px 2px 12px 0px;
+  --shadow-card: rgba(0, 0, 0, 0.08) 0px 1px 3px 0px, rgba(0, 0, 0, 0.05) 0px 2px 8px 0px;
   --shadow-md: rgba(0, 0, 0, 0.08) 0px 8px 32px 0px, rgba(0, 0, 0, 0.04) 0px 2px 8px 0px;
   --shadow-lg: rgba(0, 0, 0, 0.25) 0px 25px 50px -12px;
-  --shadow-glass: inset 0 1px 0 rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.32) 0px 12px 36px 0px;
+  --shadow-glass: inset 0 1px 0 rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.18) 0px 2px 10px 0px;
   --shadow-glow-primary: 0 12px 36px color-mix(in oklch, var(--primary) 28%, transparent);
 }
 ```
 
-В `.dark` baseline ambient shadow усиливается: `--shadow-sm`, `--shadow-md`, `--shadow-glass` получают `rgba(0,0,0,.5)` baseline вместо `.04/.08/.32` (см. §3.3 dark адаптацию).
+В `.dark` тени усиливаются умеренно (`--shadow-card` alpha .28/.2, `--shadow-glass` .3), не «поднимая» поверхности над таблицами.
 
 ### 6.3. Border radius (без изменений из источника секция 5.3)
 
@@ -437,18 +442,13 @@ Max-width 1440px, 12-column grid, 24px gaps. Card grid: 3-column desktop (368px 
 
 ### 6.5. Glassmorphism perf-ограничение
 
-`backdrop-filter` дорогой. Glass-лечение применяется только к:
+`backdrop-filter` дорогой. Градиентное оформление применяется слоями:
 
-- ✅ Top-level cards на дашборде
-- ✅ App header / навигация
-- ✅ Modals / dialogs / popovers
-- ✅ Sidebar (если есть)
-- ❌ Ячейки таблиц (`<td>`)
-- ❌ Ряды списков
-- ❌ Inline badges / chips
-- ❌ Form labels / helper text
+- ✅ **Все карточки** (`[data-slot='card']`): фон `--gradient-glass` (accent 8%→2%, без blur) + `--shadow-card` — глобальное правило, единое оформление
+- ✅ **Акцентные glass-поверхности** (`.card-glass` — KPI-плитки, сайдбар, хедер): `backdrop-filter: blur(16px) saturate(140%)` + рамка accent 12%
+- ❌ Ячейки таблиц (`<td>`), ряды списков, inline-элементы — плоские
 
-Для data-dense поверхностей — плоский фон `var(--card)` + обычная тень `--shadow-sm`.
+Для data-dense поверхностей blur не применяется (только градиент), что сохраняет perf и читаемость.
 
 ---
 
@@ -502,7 +502,7 @@ Minimum 44×44px для всех interactive элементов. Minimum 8px spa
 ### Don't
 
 - **Не хардкодить HEX** (`color: #00A0E9`) — это ломает 4 темы. Только `color: var(--primary)`.
-- **Не использовать `accent-2`** в темах, где его нет (`blue-teal`, `blue-magenta`) — fallback до `var(--primary)`.
+- **`--accent-2`** всегда определён (тема Ocean: cyan); отдельного fallback-правила больше не требуется.
 - **Не применять `backdrop-filter`** к ячейкам таблиц, рядам списков, inline-элементам — perf + читаемость.
 - **Не использовать accent-цвета (cyan/teal/magenta) для body text в light-режиме** — контраст < 4.5:1 (см. §3.4).
 - **Не смешивать шрифты** — только Montserrat, иерархия через size/weight.
@@ -520,26 +520,20 @@ Minimum 44×44px для всех interactive элементов. Minimum 8px spa
 
 ```css
 /* === L1: brand raw (never override) === */
-:root { --brand-blue-500: #00A0E9; --brand-cyan-400: #22D3EE; ... }
+:root { --brand-blue-500: #00A0E9; --brand-ocean-400: #2DD4BF; --brand-cyan-400: #22D3EE; ... }
 
 /* === L3: gradient tokens (compose L1/L2) === */
 :root { --gradient-primary: linear-gradient(135deg, ...); ... }
 
-/* === L2: semantic tokens per theme === */
-[data-theme="blue"]                { --primary: var(--brand-blue-500); ... }
-[data-theme="blue"] .dark          { --primary: ... ; }
-[data-theme="blue-cyan-violet"]    { ... }
-[data-theme="blue-cyan-violet"].dark { ... }
-[data-theme="blue-teal"]           { ... }
-[data-theme="blue-teal"].dark      { ... }
-[data-theme="blue-magenta"]        { ... }
-[data-theme="blue-magenta"].dark   { ... }
+/* === L2: semantic tokens — тема Ocean, режимы light/dark === */
+:root { --primary: var(--brand-blue-500); --accent: var(--brand-ocean-400); ... }
+.dark { --primary: #38bdf8; --accent: #5eead4; ... }
 
 /* === Tailwind v4 mapping (не трогать) === */
 @theme inline { --color-primary: var(--primary); ... }
 ```
 
-Всего 8 L2-блоков переменных (4 темы × 2 режима). L1 и L3 определены один раз.
+Всего 2 L2-блока переменных (тема Ocean × режимы light/dark). L1 и L3 определены один раз.
 
 ---
 
@@ -561,8 +555,8 @@ Minimum 44×44px для всех interactive элементов. Minimum 8px spa
 1. **Montserrat с Google Fonts** — внешний сетевой запрос. Если нужен оффлайн / self-host — отдельная карточка. Сейчас принимаем online-only с proper `display=swap`.
 2. **`backdrop-filter` perf на data-dense** — ограничение применения glass только к top-level карточкам и панели навигации (см. §6.5).
 3. **`color-mix` browser support** — все major браузеры с 2023. Если нужна поддержка older environments — polyfill card.
-4. **4 темы × 2 режима = 8 блоков** — при добавлении новой темы руками легко забыть один из `.dark` блоков. Линтить через `grep -c "data-theme" src/assets/styles/style.css` должно быть ≥ 8.
-5. **Theme switcher UI** — отсутствует в текущей итерации. Дефолтная тема выставляется в `index.html`, ручное переключение через devtools. Задача на switcher — в плане доработок демо.
+4. **Тема одна (Ocean)** — исторические палитры удалены; при возврате мульти-тем снова появится риск рассинхрона light/dark блоков.
+5. **Theme switcher UI** — реализован: переключатель светлый/тёмный (`ThemeSwitcher.vue`), персистентность `localStorage['theme']`.
 
 ---
 

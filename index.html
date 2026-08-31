@@ -1,20 +1,16 @@
 <!DOCTYPE html>
-<html lang="ru" data-theme="blue" class="dark">
+<html lang="ru" class="dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>FleetOps</title>
     <script>
-      const t = localStorage.getItem('theme') || 'blue'
-      const tp = localStorage.getItem('theme-palette') || 'blue'
-      document.documentElement.setAttribute('data-theme', tp)
-      if (!document.documentElement.classList.contains('dark')) {
-        document.documentElement.classList.add('dark')
-      }
+      const t = localStorage.getItem('theme') || 'dark'
+      document.documentElement.classList.toggle('dark', t !== 'light')
     </script>
   </head>
-  <body class="dark">
+  <body>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

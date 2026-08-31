@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "montserrat",
+        "createdAt": "2026-08-30T10:29:43.138Z",
+        "reason": "DESIGN.md mandated brand font (single-family rule); user spec overrides generic taste"
+      }
+    ]
+  }
+}
