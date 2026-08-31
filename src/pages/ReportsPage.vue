@@ -30,6 +30,9 @@ import { Download } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useRouter } from 'vue-router'
 import { incidentTypeLabel, causeLabel, CAUSE_CATALOG } from '@/data/generator'
+import { RESPONSIBILITY_ZONE_RU, MAINTENANCE_STATUS_RU } from '@/data/labels'
+import ChartCard from '@/components/ChartCard.vue'
+import LossFlowGraph from '@/components/LossFlowGraph.vue'
 import { METRIC_PASSPORTS } from '@/data/metric-passports'
 import { useTenantScope } from '@/composables/useTenantScope'
 import { impactSeconds, techAvailabilityPct, techUnavailableSeconds } from '@/data/metrics'
@@ -38,7 +41,7 @@ import { BookOpen } from 'lucide-vue-next'
 // ACC-033/034: каталог паспортов метрик (Отчёт §10.9) — раскрытый на Отчётах.
 const showPassports = ref(false)
 
-const { incidents, downtimes, analytics, robots, sites, costRates } = useDemoData()
+const { incidents, downtimes, analytics, robots, sites, costRates, maintenance } = useDemoData()
 const auth = useAuthStore()
 const router = useRouter()
 
@@ -143,6 +146,116 @@ const robotStats = computed(() => {
     }
   }
   return [...map.values()].filter((e) => e.count > 0).sort((a, b) => b.loss - a.loss)
+})
+
+// ─── Визуализации: этапы, Гант ТОиР, граф потерь (итерация 2026-08) ──────
+
+const PHASES = ['Открыт', 'В работе', 'Ожидание', 'Готов к завершению', 'Закрыт'] as const
+type Phase = (typeof PHASES)[number]
+
+const INCIDENT_PHASE: Record<string, Phase> = {
+  OPEN: 'Открыт',
+  IN_PROGRESS: 'В работе',
+  WAITING: 'Ожидание',
+  READY_TO_CLOSE: 'Готов к завершению',
+  CLOSED: 'Закрыт',
+}
+const WORK_PHASE: Record<string, Phase> = {
+  PLANNED: 'Открыт',
+  ASSIGNED: 'В работе',
+  IN_PROGRESS: 'В работе',
+  WAITING_PARTS: 'Ожидание',
+  DONE: 'Готов к завершению',
+  RESULT_CONFIRMED: 'Закрыт',
+}
+
+const phaseData = computed(() => {
+  const inc = [0, 0, 0, 0, 0]
+  const wrk = [0, 0, 0, 0, 0]
+  for (const i of filteredIncidents.value)
+    inc[PHASES.indexOf(INCIDENT_PHASE[i.status] ?? 'Открыт')]++
+  for (const w of maintenance.value) {
+    if (!scopedSiteIds.value.includes(w.siteId)) continue
+    if (selectedSite.value !== 'all' && w.siteId !== selectedSite.value) continue
+    if (w.status === 'CANCELLED') continue
+    wrk[PHASES.indexOf(WORK_PHASE[w.status] ?? 'Открыт')]++
+  }
+  return { inc, wrk }
+})
+
+const ganttWorks = computed(() =>
+  maintenance.value
+    .filter((w) => {
+      if (!scopedSiteIds.value.includes(w.siteId)) return false
+      if (selectedSite.value !== 'all' && w.siteId !== selectedSite.value) return false
+      return w.status !== 'CANCELLED'
+    })
+    .sort((a, b) => a.dueAt.localeCompare(b.dueAt))
+    .slice(0, 12),
+)
+
+const DAY = 86400000
+
+const ganttDatasets = computed(() => {
+  const now = Date.now()
+  const byStatus = new Map<string, Array<[number, number]>>()
+  const rows = ganttWorks.value
+  for (const w of rows) {
+    const due = new Date(w.dueAt).getTime()
+    const end = w.completedAt ? new Date(w.completedAt).getTime() : due
+    const start = w.startedAt ? new Date(w.startedAt).getTime() : due - 2 * DAY
+    const arr = byStatus.get(w.status) ?? []
+    arr.push([Math.round((start - now) / DAY), Math.round((end - now) / DAY)])
+    byStatus.set(w.status, arr)
+  }
+  const tokens: Record<string, string> = {
+    PLANNED: '--chart-3',
+    ASSIGNED: '--chart-1',
+    IN_PROGRESS: '--chart-1',
+    WAITING_PARTS: '--warning',
+    DONE: '--success',
+    RESULT_CONFIRMED: '--success',
+  }
+  return [...byStatus.entries()].map(([status, data]) => ({
+    label: MAINTENANCE_STATUS_RU[status] ?? status,
+    color: tokens[status] ?? '--chart-1',
+    data,
+  }))
+})
+
+const ganttLabels = computed(() =>
+  ganttWorks.value.map((w) => {
+    const robot = robots.value.find((r) => r.id === w.robotId)?.name ?? w.robotId
+    const t = w.title.length > 22 ? w.title.slice(0, 21) + '…' : w.title
+    return `${robot} · ${t}`
+  }),
+)
+
+const flowLinks = computed(() => {
+  const byCause = new Map<string, Map<string, number>>()
+  for (const i of filteredIncidents.value) {
+    if (!i.causeCode || i.lossRubles <= 0) continue
+    const site = sites.value.find((s) => s.id === i.siteId)?.name ?? i.siteId
+    const inner = byCause.get(i.causeCode) ?? new Map<string, number>()
+    inner.set(site, (inner.get(site) ?? 0) + i.lossRubles)
+    byCause.set(i.causeCode, inner)
+  }
+  const totals = [...byCause.entries()]
+    .map(([code, sitesMap]) => ({
+      code,
+      total: [...sitesMap.values()].reduce((s, v) => s + v, 0),
+      sitesMap,
+    }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 4)
+  const tokens = ['--chart-1', '--chart-2', '--chart-3', '--chart-4']
+  const links: Array<{ from: string; to: string; value: number; colorToken: string }> = []
+  totals.forEach((t, idx) => {
+    const name = causeLabel(t.code).split(' · ')[1] ?? causeLabel(t.code)
+    for (const [site, value] of t.sitesMap)
+      links.push({ from: name, to: site, value, colorToken: tokens[idx] })
+  })
+  return links
 })
 
 function exportReport(): void {
@@ -340,7 +453,9 @@ function openBreakdown(title: string): void {
             >
               <TableCell class="text-sm py-3 px-4">{{ causeLabel(c.code) }}</TableCell>
               <TableCell class="text-xs py-3 px-4">{{
-                CAUSE_CATALOG[c.code]?.zone ?? '—'
+                RESPONSIBILITY_ZONE_RU[CAUSE_CATALOG[c.code]?.zone ?? ''] ??
+                CAUSE_CATALOG[c.code]?.zone ??
+                '—'
               }}</TableCell>
               <TableCell class="text-sm tabular-nums py-3 px-4">{{ c.count }}</TableCell>
               <TableCell class="text-sm tabular-nums py-3 px-4">{{ c.hours.toFixed(1) }}</TableCell>
@@ -386,18 +501,68 @@ function openBreakdown(title: string): void {
       </CardContent>
     </Card>
 
+    <!-- Визуальный блок: этапы + Гант (bento 2-col), граф потерь fullwidth (итерация 2026-08) -->
+    <div class="grid gap-4 lg:grid-cols-2">
+      <Card class="card-glass">
+        <CardHeader
+          ><CardTitle>Задачи по этапам</CardTitle>
+          <p class="text-xs text-muted-foreground">
+            Инциденты и работы ТОиР по фазам процесса: где скапливается очередь
+          </p></CardHeader
+        >
+        <CardContent>
+          <ChartCard
+            type="bar-stacked"
+            horizontal
+            :labels="[...PHASES]"
+            :datasets="[
+              { label: 'Инциденты', color: '--chart-1', data: phaseData.inc },
+              { label: 'Работы ТОиР', color: '--chart-2', data: phaseData.wrk },
+            ]"
+          />
+        </CardContent>
+      </Card>
+
+      <Card class="card-glass">
+        <CardHeader
+          ><CardTitle>Гант работ ТОиР</CardTitle>
+          <p class="text-xs text-muted-foreground">
+            План и факт по дням относительно сегодняшнего дня; цвет — стадия работы
+          </p></CardHeader
+        >
+        <CardContent>
+          <ChartCard
+            type="bar"
+            horizontal
+            suffix=" дн"
+            :labels="ganttLabels"
+            :datasets="ganttDatasets"
+          />
+        </CardContent>
+      </Card>
+    </div>
+
+    <!-- Граф потерь: причина → объект, толщина ленты ∝ потерям -->
+    <Card class="card-glass">
+      <CardHeader
+        ><CardTitle>Потери: причина → объект</CardTitle>
+        <p class="text-xs text-muted-foreground">
+          Топ-4 причин по потерям и их распределение по объектам; наведите на ленту для суммы
+        </p></CardHeader
+      >
+      <CardContent>
+        <LossFlowGraph :links="flowLinks" unit=" ₽" />
+      </CardContent>
+    </Card>
+
     <!-- Реакция и восстановление (ACC-021): объяснимые метрики вместо SLA-цифр
          без контекста — определение, норматив, числитель/знаменатель, формула. -->
     <div class="grid gap-4 lg:grid-cols-2">
       <Card>
         <CardHeader>
           <CardTitle>Реакция на инцидент</CardTitle>
-          <p class="text-xs text-muted-foreground">
-            Определение: время от обнаружения инцидента до принятия его в работу координатором.
-            Норматив: 10 минут. Источник: FleetOps (история инцидента), 30 дней.
-          </p>
         </CardHeader>
-        <CardContent class="space-y-2">
+        <CardContent class="space-y-3">
           <div class="flex gap-6">
             <div class="text-center">
               <p class="text-3xl font-bold text-success tabular-nums">
@@ -412,30 +577,35 @@ function openBreakdown(title: string): void {
               <p class="text-xs text-muted-foreground">превышен норматив</p>
             </div>
           </div>
-          <p class="text-xs text-muted-foreground">
-            Числитель: инциденты, принятые в работу ≤ 10 мин. Знаменатель: инциденты с
-            зафиксированным временем реакции —
-            {{ analytics.sla.reactionMet + analytics.sla.reactionViolated }}. Доля в норме:
-            {{
-              (
-                (analytics.sla.reactionMet /
-                  Math.max(1, analytics.sla.reactionMet + analytics.sla.reactionViolated)) *
-                100
-              ).toFixed(0)
-            }}%. Детализация — реестр инцидентов.
-          </p>
+          <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs border-t border-border pt-2">
+            <dt class="text-muted-foreground">Определение</dt>
+            <dd>время от обнаружения инцидента до принятия его в работу координатором</dd>
+            <dt class="text-muted-foreground">Норматив</dt>
+            <dd>10 минут</dd>
+            <dt class="text-muted-foreground">Числитель</dt>
+            <dd>инциденты, принятые в работу ≤ 10 мин</dd>
+            <dt class="text-muted-foreground">Знаменатель</dt>
+            <dd>
+              инциденты с зафиксированным временем реакции —
+              {{ analytics.sla.reactionMet + analytics.sla.reactionViolated }} (доля в норме:
+              {{
+                (
+                  (analytics.sla.reactionMet /
+                    Math.max(1, analytics.sla.reactionMet + analytics.sla.reactionViolated)) *
+                  100
+                ).toFixed(0)
+              }}%)
+            </dd>
+            <dt class="text-muted-foreground">Источник</dt>
+            <dd>FleetOps (история инцидента), 30 дней · детализация — реестр инцидентов</dd>
+          </dl>
         </CardContent>
       </Card>
       <Card>
         <CardHeader>
           <CardTitle>Восстановление робота</CardTitle>
-          <p class="text-xs text-muted-foreground">
-            Определение: время от обнаружения инцидента до возврата робота в парк (окончание
-            технической недоступности). Норматив: 120 минут. Источник: FleetOps (контрольные точки),
-            30 дней.
-          </p>
         </CardHeader>
-        <CardContent class="space-y-2">
+        <CardContent class="space-y-3">
           <div class="flex gap-6">
             <div class="text-center">
               <p class="text-3xl font-bold text-success tabular-nums">
@@ -450,18 +620,34 @@ function openBreakdown(title: string): void {
               <p class="text-xs text-muted-foreground">превышен норматив</p>
             </div>
           </div>
-          <p class="text-xs text-muted-foreground">
-            Числитель: возвраты в парк ≤ 120 мин. Знаменатель: закрытые инциденты с технической
-            недоступностью —
-            {{ analytics.sla.recoveryMet + analytics.sla.recoveryViolated }}. Доля в норме:
-            {{
-              (
-                (analytics.sla.recoveryMet /
-                  Math.max(1, analytics.sla.recoveryMet + analytics.sla.recoveryViolated)) *
-                100
-              ).toFixed(0)
-            }}%. Распределение (медиана / среднее / 90-й перцентиль) — «Аналитика и экономика».
-          </p>
+          <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs border-t border-border pt-2">
+            <dt class="text-muted-foreground">Определение</dt>
+            <dd>
+              время от обнаружения инцидента до возврата робота в парк (окончание технической
+              недоступности)
+            </dd>
+            <dt class="text-muted-foreground">Норматив</dt>
+            <dd>120 минут</dd>
+            <dt class="text-muted-foreground">Числитель</dt>
+            <dd>возвраты в парк ≤ 120 мин</dd>
+            <dt class="text-muted-foreground">Знаменатель</dt>
+            <dd>
+              закрытые инциденты с технической недоступностью —
+              {{ analytics.sla.recoveryMet + analytics.sla.recoveryViolated }} (доля в норме:
+              {{
+                (
+                  (analytics.sla.recoveryMet /
+                    Math.max(1, analytics.sla.recoveryMet + analytics.sla.recoveryViolated)) *
+                  100
+                ).toFixed(0)
+              }}%)
+            </dd>
+            <dt class="text-muted-foreground">Источник</dt>
+            <dd>
+              FleetOps (контрольные точки), 30 дней · распределение (медиана / среднее / 90-й
+              перцентиль) — «Аналитика и экономика»
+            </dd>
+          </dl>
         </CardContent>
       </Card>
     </div>
@@ -473,9 +659,7 @@ function openBreakdown(title: string): void {
       >
         <DialogHeader class="p-6 pb-3 shrink-0">
           <DialogTitle>{{ breakdownTitle }}</DialogTitle>
-          <DialogDescription>
-            Расшифровка показателя — {{ siteName }}. Клик по строке открывает карточку инцидента.
-          </DialogDescription>
+          <DialogDescription> Расшифровка показателя — {{ siteName }} </DialogDescription>
         </DialogHeader>
         <div class="flex-1 min-h-0 overflow-auto px-6">
           <p class="text-xs text-muted-foreground mb-2">
