@@ -166,14 +166,14 @@ function goRobot(id: string): void {
 
     <!-- Экономика зоны -->
     <div class="grid gap-4 grid-cols-2 md:grid-cols-4">
-      <Card>
+      <Card class="card-glass">
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Операционное влияние</p>
           <p class="text-2xl font-bold tabular-nums">{{ impactHours.toFixed(1) }} ч</p>
           <p class="text-xs text-muted-foreground mt-0.5">{{ impact.length }} подтверждённых</p>
         </CardContent>
       </Card>
-      <Card>
+      <Card class="card-glass">
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Потери процесса</p>
           <p class="text-2xl font-bold tabular-nums text-destructive">
@@ -184,14 +184,14 @@ function goRobot(id: string): void {
           </p>
         </CardContent>
       </Card>
-      <Card>
+      <Card class="card-glass">
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Технедоступность</p>
           <p class="text-2xl font-bold tabular-nums">{{ techHours.toFixed(1) }} ч</p>
           <p class="text-xs text-muted-foreground mt-0.5">без начисления потерь</p>
         </CardContent>
       </Card>
-      <Card>
+      <Card class="card-glass">
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Инциденты</p>
           <p class="text-2xl font-bold tabular-nums">{{ zoneIncidents.length }}</p>

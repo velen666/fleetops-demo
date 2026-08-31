@@ -559,7 +559,7 @@ function exportBreakdownCsv(): void {
 
     <!-- 32.2 Верхняя сводка (ТЗ v2.0 §9.2) -->
     <div class="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
-      <Card>
+      <Card class="card-glass">
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Техническая доступность</p>
           <p class="text-2xl font-bold tabular-nums text-success">
@@ -577,7 +577,7 @@ function exportBreakdownCsv(): void {
           </p>
         </CardContent>
       </Card>
-      <Card>
+      <Card class="card-glass">
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Операционная доступность мощности</p>
           <p class="text-2xl font-bold tabular-nums text-success">
@@ -594,7 +594,7 @@ function exportBreakdownCsv(): void {
           </p>
         </CardContent>
       </Card>
-      <Card>
+      <Card class="card-glass">
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Потери процесса</p>
           <p class="text-2xl font-bold tabular-nums text-destructive">
@@ -605,7 +605,7 @@ function exportBreakdownCsv(): void {
           </p>
         </CardContent>
       </Card>
-      <Card>
+      <Card class="card-glass">
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Стоимость ремонта</p>
           <p class="text-2xl font-bold tabular-nums">
@@ -616,7 +616,7 @@ function exportBreakdownCsv(): void {
           </p>
         </CardContent>
       </Card>
-      <Card>
+      <Card class="card-glass">
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Инциденты и бэклог</p>
           <p class="text-2xl font-bold tabular-nums">
@@ -631,7 +631,7 @@ function exportBreakdownCsv(): void {
           </p>
         </CardContent>
       </Card>
-      <Card :class="kpis.reserveBelow.length > 0 ? 'border-warning/40' : ''">
+      <Card class="card-glass" :class="kpis.reserveBelow.length > 0 ? 'border-warning/40' : ''">
         <CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Резерв ниже норматива</p>
           <p

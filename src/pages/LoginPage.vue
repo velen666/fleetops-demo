@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useAuthStore } from '@/stores/auth'
 import { ROLE_DEFINITIONS, type RoleCode } from '@/data/roles'
-import {} from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
 import { Bot, ShieldCheck, Wrench, Eye, TrendingUp, Users, Settings } from 'lucide-vue-next'
 import type { Component } from 'vue'
 
@@ -25,14 +25,14 @@ function enter(code: RoleCode): void {
 </script>
 
 <template>
-  <div class="flex min-h-screen items-center justify-center bg-background p-4">
+  <div class="flex min-h-dvh items-center justify-center bg-background p-4">
     <div class="w-full max-w-3xl space-y-6">
       <div class="text-center space-y-2">
         <div class="flex justify-center">
           <div
-            class="size-16 rounded-2xl bg-gradient-to-br from-brand-blue-500 to-brand-blue-700 flex items-center justify-center"
+            class="size-16 rounded-2xl [background-image:var(--gradient-primary)] flex items-center justify-center"
           >
-            <Bot class="size-8 text-white" />
+            <Bot class="size-8 text-primary-foreground" />
           </div>
         </div>
         <h1 class="text-2xl font-bold">FleetOps</h1>
@@ -46,10 +46,11 @@ function enter(code: RoleCode): void {
           Выберите роль для входа в систему
         </p>
         <div class="grid gap-3 sm:grid-cols-2">
-          <button
+          <Button
             v-for="role in ROLE_DEFINITIONS"
             :key="role.code"
-            class="flex items-start gap-3 rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary hover:bg-accent/50"
+            variant="outline"
+            class="flex h-auto w-full items-start justify-start gap-3 rounded-xl bg-card p-4 text-left whitespace-normal hover:border-primary hover:bg-accent/50"
             @click="enter(role.code)"
           >
             <div class="size-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
@@ -59,7 +60,7 @@ function enter(code: RoleCode): void {
               <p class="font-medium text-sm">{{ role.name }}</p>
               <p class="text-xs text-muted-foreground mt-0.5">{{ role.description }}</p>
             </div>
-          </button>
+          </Button>
         </div>
       </div>
     </div>

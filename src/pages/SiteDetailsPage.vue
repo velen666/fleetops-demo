@@ -318,7 +318,7 @@ function goRobotsFiltered(): void {
           <CardHeader
             ><CardTitle>Зоны объекта</CardTitle>
             <p class="text-xs text-muted-foreground">
-              Клик по зоне — страница зоны (мощность, роботы, инциденты, простои)
+              Мощность, парк и потери по каждой зоне
             </p></CardHeader
           >
           <CardContent class="p-0">

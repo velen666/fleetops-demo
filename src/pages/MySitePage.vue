@@ -265,7 +265,7 @@ function fmtMoney(n: number): string {
     <!-- Ключевые показатели (§8.1; title = определение, период) -->
     <div class="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
       <Card
-        class="kpi-clickable"
+        class="kpi-clickable card-glass"
         :class="kpi.deficitZones > 0 ? 'border-destructive/40' : ''"
         title="Зоны, где работающих меньше требуемой мощности. Период: сейчас."
         @click="router.push(`/sites/${siteId}`)"
@@ -281,7 +281,7 @@ function fmtMoney(n: number): string {
         </CardContent>
       </Card>
       <Card
-        class="kpi-clickable"
+        class="kpi-clickable card-glass"
         title="Роботы в состоянии «Работает в зоне». Период: сейчас."
         @click="router.push(`/sites/${siteId}`)"
       >
@@ -291,7 +291,7 @@ function fmtMoney(n: number): string {
         </CardContent>
       </Card>
       <Card
-        class="kpi-clickable"
+        class="kpi-clickable card-glass"
         :title="`Свободный резерв против норматива (${reserveState.norm}). Ниже норматива — риск устойчивости, не потеря.`"
         @click="router.push(`/sites/${siteId}`)"
       >
@@ -299,14 +299,14 @@ function fmtMoney(n: number): string {
           <p class="text-sm text-muted-foreground">Резерв</p>
           <p
             class="text-2xl font-bold tabular-nums"
-            :class="reserveState.below ? 'text-warning' : 'text-cyan-500'"
+            :class="reserveState.below ? 'text-warning' : 'text-accent'"
           >
             {{ kpi.reserve }} / {{ reserveState.norm }}
           </p>
         </CardContent>
       </Card>
       <Card
-        class="kpi-clickable"
+        class="kpi-clickable card-glass"
         title="Роботы на зарядке. Период: сейчас."
         @click="router.push('/robots')"
       >
@@ -316,7 +316,7 @@ function fmtMoney(n: number): string {
         </CardContent>
       </Card>
       <Card
-        class="kpi-clickable"
+        class="kpi-clickable card-glass"
         title="Диагностика, ожидание ремонта/запчастей, ремонт, аварийная остановка. Период: сейчас."
         @click="router.push('/maintenance')"
       >
@@ -326,7 +326,7 @@ function fmtMoney(n: number): string {
         </CardContent>
       </Card>
       <Card
-        class="kpi-clickable"
+        class="kpi-clickable card-glass"
         title="Незакрытые инциденты объекта. Период: 30 дней."
         @click="router.push('/incidents')"
       >
@@ -334,7 +334,7 @@ function fmtMoney(n: number): string {
           <p class="text-sm text-muted-foreground">Активные инциденты</p>
           <p
             class="text-2xl font-bold tabular-nums"
-            :class="kpi.activeIncidents > 0 ? 'text-orange-500' : ''"
+            :class="kpi.activeIncidents > 0 ? 'text-warning' : ''"
           >
             {{ kpi.activeIncidents }}
           </p>
@@ -383,7 +383,7 @@ function fmtMoney(n: number): string {
                   {{ z.deficit > 0 ? `−${z.deficit} ед.` : '—' }}
                 </td>
                 <td class="py-2.5 pr-4 tabular-nums">
-                  <span v-if="z.activeIncidents > 0" class="text-orange-500"
+                  <span v-if="z.activeIncidents > 0" class="text-warning"
                     >{{ z.activeIncidents }} активных</span
                   >
                   <span v-else class="text-muted-foreground">нет</span>

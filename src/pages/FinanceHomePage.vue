@@ -98,7 +98,7 @@ function goIncident(id: string): void {
 <template>
   <div class="space-y-4">
     <!-- Первый экран: потери за период -->
-    <Card class="border-primary/30">
+    <Card class="card-glass">
       <CardContent class="p-5 space-y-2">
         <div class="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -204,16 +204,15 @@ function goIncident(id: string): void {
       </CardContent>
     </Card>
 
-    <!-- Границы модели (ACC-027): без ТЭО полный эффект не показывается -->
-    <Card>
-      <CardContent class="p-4 text-xs text-muted-foreground">
-        <p class="flex items-center gap-1">
-          <TrendingDown class="size-3.5" />
-          Полный эффект план/факт, TCO и окупаемость не рассчитываются: нет подтверждённого ТЭО,
-          фактического объёма процесса и правил исключения двойного счёта. Показатели появятся
-          только после активации соответствующей модели.
-        </p>
-      </CardContent>
-    </Card>
+    <!-- Границы модели (ACC-027): без ТЭО полный эффект не показывается.
+         Текстовый дисклеймер: без карточки, через разделитель (переработка формы показа). -->
+    <div class="flex items-start gap-2 border-t border-border pt-4 text-xs text-muted-foreground">
+      <TrendingDown class="size-3.5 mt-0.5 shrink-0 text-muted-foreground/70" />
+      <p>
+        Полный эффект план/факт, TCO и окупаемость не рассчитываются: нет подтверждённого ТЭО,
+        фактического объёма процесса и правил исключения двойного счёта. Показатели появятся только
+        после активации соответствующей модели.
+      </p>
+    </div>
   </div>
 </template>

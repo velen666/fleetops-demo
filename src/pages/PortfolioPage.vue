@@ -246,7 +246,7 @@ const VERDICT_RU: Record<SiteCard['verdict'], string> = {
 
     <!-- Строка 2: ключевые показатели портфеля -->
     <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
-      <Card class="kpi-clickable" @click="goAnalytics">
+      <Card class="kpi-clickable card-glass" @click="goAnalytics">
         <CardContent class="p-4">
           <p class="text-xs text-muted-foreground flex items-center gap-1">
             <Activity class="size-3" /> Техническая доступность
@@ -257,7 +257,7 @@ const VERDICT_RU: Record<SiteCard['verdict'], string> = {
           <p class="text-[10px] text-muted-foreground">парк × 8 ч × 30 дней</p>
         </CardContent>
       </Card>
-      <Card class="kpi-clickable" @click="goAnalytics">
+      <Card class="kpi-clickable card-glass" @click="goAnalytics">
         <CardContent class="p-4">
           <p class="text-xs text-muted-foreground">Операционная доступность</p>
           <p class="text-xl font-bold tabular-nums text-success">
@@ -266,7 +266,7 @@ const VERDICT_RU: Record<SiteCard['verdict'], string> = {
           <p class="text-[10px] text-muted-foreground">мощность зон</p>
         </CardContent>
       </Card>
-      <Card class="kpi-clickable" @click="goAnalytics">
+      <Card class="kpi-clickable card-glass" @click="goAnalytics">
         <CardContent class="p-4">
           <p class="text-xs text-muted-foreground">MTTR</p>
           <p class="text-xl font-bold tabular-nums">{{ fleetKpis.mttrHours.toFixed(1) }} ч</p>
@@ -275,14 +275,14 @@ const VERDICT_RU: Record<SiteCard['verdict'], string> = {
           </p>
         </CardContent>
       </Card>
-      <Card class="kpi-clickable" @click="router.push({ name: 'maintenance' })">
+      <Card class="kpi-clickable card-glass" @click="router.push({ name: 'maintenance' })">
         <CardContent class="p-4">
           <p class="text-xs text-muted-foreground">Сервисный бэклог</p>
           <p class="text-xl font-bold tabular-nums">{{ fleetKpis.backlog }}</p>
           <p class="text-[10px] text-muted-foreground">работ в контуре</p>
         </CardContent>
       </Card>
-      <Card class="kpi-clickable" @click="router.push({ name: 'maintenance' })">
+      <Card class="kpi-clickable card-glass" @click="router.push({ name: 'maintenance' })">
         <CardContent class="p-4">
           <p class="text-xs text-muted-foreground flex items-center gap-1">
             <AlertTriangle class="size-3" /> Просрочено ТОиР
@@ -295,7 +295,7 @@ const VERDICT_RU: Record<SiteCard['verdict'], string> = {
           </p>
         </CardContent>
       </Card>
-      <Card class="kpi-clickable" @click="goAnalytics">
+      <Card class="kpi-clickable card-glass" @click="goAnalytics">
         <CardContent class="p-4">
           <p class="text-xs text-muted-foreground flex items-center gap-1">
             <TrendingDown class="size-3" /> Подтверждённые потери
@@ -305,7 +305,7 @@ const VERDICT_RU: Record<SiteCard['verdict'], string> = {
           </p>
         </CardContent>
       </Card>
-      <Card class="kpi-clickable" @click="router.push({ name: 'incidents' })">
+      <Card class="kpi-clickable card-glass" @click="router.push({ name: 'incidents' })">
         <CardContent class="p-4">
           <p class="text-xs text-muted-foreground">Активные инциденты</p>
           <p class="text-xl font-bold tabular-nums">{{ portfolioVerdict.decisions }}</p>
@@ -318,7 +318,7 @@ const VERDICT_RU: Record<SiteCard['verdict'], string> = {
       <Card
         v-for="c in siteCards"
         :key="c.id"
-        class="kpi-clickable hover:border-primary/40"
+        class="kpi-clickable card-glass hover:border-primary/40"
         @click="goSite(c.id)"
       >
         <CardHeader class="pb-2">

@@ -3,6 +3,14 @@ import { computed } from 'vue'
 import { useDemoData } from '@/composables/useDemoData'
 import { useTenantScope } from '@/composables/useTenantScope'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { AlertTriangle, Clock, TrendingDown, Activity, ArrowRight, MapPin } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { incidentTypeLabel, causeLabel, CAUSE_CATALOG } from '@/data/generator'
@@ -113,7 +121,7 @@ const classificationDetail = computed(() => ({
   <div class="space-y-6">
     <!-- KPI cards -->
     <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-      <Card class="kpi-clickable" @click="router.push({ name: 'analytics' })">
+      <Card class="kpi-clickable card-glass" @click="router.push({ name: 'analytics' })">
         <CardContent class="p-4">
           <div class="flex items-center justify-between">
             <div>
@@ -125,7 +133,7 @@ const classificationDetail = computed(() => ({
           </div>
         </CardContent>
       </Card>
-      <Card class="kpi-clickable" @click="router.push({ name: 'downtimes' })">
+      <Card class="kpi-clickable card-glass" @click="router.push({ name: 'downtimes' })">
         <CardContent class="p-4">
           <div class="flex items-center justify-between">
             <div>
@@ -139,7 +147,7 @@ const classificationDetail = computed(() => ({
           </div>
         </CardContent>
       </Card>
-      <Card class="kpi-clickable" @click="router.push({ name: 'analytics' })">
+      <Card class="kpi-clickable card-glass" @click="router.push({ name: 'analytics' })">
         <CardContent class="p-4">
           <div class="flex items-center justify-between">
             <div>
@@ -153,7 +161,7 @@ const classificationDetail = computed(() => ({
           </div>
         </CardContent>
       </Card>
-      <Card class="kpi-clickable" @click="router.push({ name: 'incidents' })">
+      <Card class="kpi-clickable card-glass" @click="router.push({ name: 'incidents' })">
         <CardContent class="p-4">
           <div class="flex items-center justify-between">
             <div>
@@ -161,7 +169,7 @@ const classificationDetail = computed(() => ({
               <p class="text-2xl font-bold tabular-nums">{{ stats.activeIncidents }}</p>
               <p class="text-xs text-muted-foreground mt-0.5">требуют внимания</p>
             </div>
-            <AlertTriangle class="size-8 text-orange-500" />
+            <AlertTriangle class="size-8 text-warning" />
           </div>
         </CardContent>
       </Card>
@@ -171,64 +179,73 @@ const classificationDetail = computed(() => ({
     <Card>
       <CardHeader
         ><CardTitle>По объектам</CardTitle>
-        <p class="text-xs text-muted-foreground">
-          Клик по объекту — страница объекта (зоны, парк, инциденты, сервис)
-        </p></CardHeader
-      >
-      <CardContent class="p-0">
+        <p class="text-xs text-muted-foreground">Зоны ответственности за период, все объекты</p>
+      </CardHeader>
+      <CardContent class="p-0 pb-1">
         <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="border-b text-left text-muted-foreground">
-                <th class="py-2 pr-4 font-medium">Объект</th>
-                <th class="py-2 pr-4 font-medium">Ставка</th>
-                <th class="py-2 pr-4 font-medium">Парк (работает)</th>
-                <th class="py-2 pr-4 font-medium">Резерв</th>
-                <th class="py-2 pr-4 font-medium">Сервис</th>
-                <th class="py-2 pr-4 font-medium">Активные инциденты</th>
-                <th class="py-2 pr-4 font-medium">Бэклог работ</th>
-                <th class="py-2 pr-4 font-medium">Влияние, ч</th>
-                <th class="py-2 font-medium">Потери за период</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
+          <Table class="text-sm">
+            <TableHeader>
+              <TableRow class="hover:bg-transparent">
+                <TableHead class="py-3 pl-6 pr-4 whitespace-nowrap">Объект</TableHead>
+                <TableHead class="py-3 px-4 whitespace-nowrap">Ставка</TableHead>
+                <TableHead class="py-3 px-4 whitespace-nowrap">Парк (работает)</TableHead>
+                <TableHead class="py-3 px-4 whitespace-nowrap">Резерв</TableHead>
+                <TableHead class="py-3 px-4 whitespace-nowrap">Сервис</TableHead>
+                <TableHead class="py-3 px-4 whitespace-nowrap">Активные инциденты</TableHead>
+                <TableHead class="py-3 px-4 whitespace-nowrap">Бэклог работ</TableHead>
+                <TableHead class="py-3 px-4 whitespace-nowrap">Влияние, ч</TableHead>
+                <TableHead class="py-3 pl-4 pr-6 text-right whitespace-nowrap">
+                  Потери за период
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow
                 v-for="s in siteRows"
                 :key="s.id"
-                class="card-interactive cursor-pointer border-b last:border-0"
+                class="card-interactive cursor-pointer"
                 @click="router.push({ name: 'site-details', params: { siteId: s.id } })"
               >
-                <td class="py-2.5 pr-4 font-medium">{{ s.name }}</td>
-                <td class="py-2.5 pr-4 tabular-nums text-muted-foreground">
+                <TableCell class="py-3.5 pl-6 pr-4 font-medium">{{ s.name }}</TableCell>
+                <TableCell class="py-3.5 px-4 tabular-nums text-muted-foreground whitespace-nowrap">
                   {{ s.rate.toLocaleString('ru-RU') }} ₽/ч
-                </td>
-                <td class="py-2.5 pr-4 tabular-nums">
+                </TableCell>
+                <TableCell class="py-3.5 px-4 tabular-nums whitespace-nowrap">
                   {{ s.park }}
                   <span class="text-success">({{ s.working }})</span>
-                </td>
-                <td
-                  class="py-2.5 pr-4 tabular-nums"
+                </TableCell>
+                <TableCell
+                  class="py-3.5 px-4 tabular-nums whitespace-nowrap"
                   :class="s.reserve < s.reserveNorm ? 'text-warning' : ''"
                 >
                   {{ s.reserve }} / {{ s.reserveNorm }}
-                </td>
-                <td class="py-2.5 pr-4 tabular-nums" :class="s.service > 0 ? 'text-warning' : ''">
+                </TableCell>
+                <TableCell
+                  class="py-3.5 px-4 tabular-nums whitespace-nowrap"
+                  :class="s.service > 0 ? 'text-warning' : ''"
+                >
                   {{ s.service }}
-                </td>
-                <td
-                  class="py-2.5 pr-4 tabular-nums"
-                  :class="s.activeInc > 0 ? 'text-orange-500' : ''"
+                </TableCell>
+                <TableCell
+                  class="py-3.5 px-4 tabular-nums whitespace-nowrap"
+                  :class="s.activeInc > 0 ? 'text-warning' : ''"
                 >
                   {{ s.activeInc }}
-                </td>
-                <td class="py-2.5 pr-4 tabular-nums">{{ s.backlog }}</td>
-                <td class="py-2.5 pr-4 tabular-nums">{{ s.impactHours.toFixed(1) }}</td>
-                <td class="py-2.5 tabular-nums text-destructive font-medium">
+                </TableCell>
+                <TableCell class="py-3.5 px-4 tabular-nums whitespace-nowrap">
+                  {{ s.backlog }}
+                </TableCell>
+                <TableCell class="py-3.5 px-4 tabular-nums whitespace-nowrap">
+                  {{ s.impactHours.toFixed(1) }}
+                </TableCell>
+                <TableCell
+                  class="py-3.5 pl-4 pr-6 text-right tabular-nums text-destructive font-medium whitespace-nowrap"
+                >
                   {{ s.loss.toLocaleString('ru-RU') }} ₽
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
         </div>
       </CardContent>
     </Card>

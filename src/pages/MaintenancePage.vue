@@ -223,25 +223,25 @@ function totalCost(m: MaintenanceWork): number {
   <div class="space-y-4">
     <!-- Summary -->
     <div class="grid gap-4 md:grid-cols-4">
-      <Card
+      <Card class="card-glass"
         ><CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Всего работ</p>
           <p class="text-2xl font-bold tabular-nums">{{ summary.total }}</p>
         </CardContent></Card
       >
-      <Card
+      <Card class="card-glass"
         ><CardContent class="p-4">
           <p class="text-sm text-muted-foreground">В работе</p>
           <p class="text-2xl font-bold text-primary tabular-nums">{{ summary.inProgress }}</p>
         </CardContent></Card
       >
-      <Card
+      <Card class="card-glass"
         ><CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Просрочено</p>
           <p class="text-2xl font-bold text-destructive tabular-nums">{{ summary.overdue }}</p>
         </CardContent></Card
       >
-      <Card
+      <Card class="card-glass"
         ><CardContent class="p-4">
           <p class="text-sm text-muted-foreground">Выполнено</p>
           <p class="text-2xl font-bold text-success tabular-nums">{{ summary.done }}</p>
